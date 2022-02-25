@@ -1,0 +1,27 @@
+{
+  "name": "@ghom/handler",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "File handler that extends @ghom/event-emitter",
+  "prettier": {
+    "semi": false
+  },
+  "scripts": {
+    "format": "prettier --write src tsconfig.*",
+    "build": "tsc",
+    "test": "npm run build && jest tests/test.js",
+    "prepublishOnly": "npm run format && npm test"
+  },
+  "devDependencies": {
+    "jest": "^27.5.1",
+    "sqlite3": "^5.0.2",
+    "prettier": "^2.5.1",
+    "typescript": "^4.5.5"
+  },
+  "dependencies": {
+    "@ghom/handler": "^1.0.0",
+    "knex": "^1.0.3"
+  }
+}
