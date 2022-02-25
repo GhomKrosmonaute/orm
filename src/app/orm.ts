@@ -1,6 +1,5 @@
-import knex, { Knex } from "knex"
-import path from "path"
 import { Handler } from "@ghom/handler"
+import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table"
 
 /**
@@ -26,7 +25,7 @@ export class ORM extends Handler {
       client: "sqlite3",
       useNullAsDefault: true,
       connection: {
-        filename: path.join(process.cwd(), "sqlite3.db"),
+        filename: ":memory:",
       },
     }
   ) {
@@ -38,9 +37,9 @@ export class ORM extends Handler {
 
   async init() {
     this.once("finish", async (pathList) => {
-      const tables = await Promise.all(
+      const tables: Table<any>[] = await Promise.all(
         pathList.map(async (filepath) => {
-          return import("file://" + filepath).then((file) => file.default)
+          return import(filepath).then((file) => file.default)
         })
       )
 
@@ -68,6 +67,4 @@ export class ORM extends Handler {
 
     await this.load()
   }
-
-  //todo: forEach table: table.orm = this THEN do make & etc...
 }
