@@ -43,27 +43,29 @@ export class ORM extends Handler {
         })
       )
 
-      tables.unshift(
-        new Table<MigrationData>({
-          name: "migration",
-          priority: Infinity,
-          setup: (table) => {
-            table.string("table").unique().notNullable()
-            table.integer("version").notNullable()
-          },
-        })
-      )
+      const migration = new Table<MigrationData>({
+        name: "migration",
+        priority: Infinity,
+        setup: (table) => {
+          table.string("table").unique().notNullable()
+          table.integer("version").notNullable()
+        },
+      })
 
-      tables.forEach((table) => (table.orm = this))
+      migration.orm = this
+      await migration.make()
 
-      return Promise.all(
-        tables
-          .sort((a, b) => {
-            return (b.options.priority ?? 0) - (a.options.priority ?? 0)
-          })
-          .map((table) => table.make())
-      )
+      for (const table of tables.sort(
+        (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0)
+      )) {
+        table.orm = this
+        await table.make()
+      }
     })
+
+    try {
+      await this.db.raw("PRAGMA foreign_keys = ON;")
+    } catch (error) {}
 
     await this.load()
   }

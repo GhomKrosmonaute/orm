@@ -10,6 +10,7 @@ export interface TableOptions<Type> {
   name: string
   priority?: number
   migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
+  then?: (this: Table<Type>, table: Table<Type>) => unknown
   setup: (table: Knex.CreateTableBuilder) => void
 }
 
@@ -30,6 +31,17 @@ export class Table<Type> {
 
   get query() {
     return this.db<Type>(this.options.name)
+  }
+
+  async hasColumn(name: keyof Type): Promise<boolean> {
+    return this.db.schema.hasColumn(this.options.name, name as string)
+  }
+
+  async isEmpty(): Promise<boolean> {
+    return this.query
+      .select()
+      .limit(1)
+      .then((rows) => rows.length === 0)
   }
 
   async make(): Promise<this> {
@@ -62,6 +74,8 @@ export class Table<Type> {
       if (this.verbose) console.error(error)
     }
 
+    await this.options.then?.bind(this)(this)
+
     return this
   }
 
@@ -83,7 +97,7 @@ export class Table<Type> {
 
     const data = fromDatabase || {
       table: this.options.name,
-      version: -1,
+      version: -Infinity,
     }
 
     const baseVersion = data.version
