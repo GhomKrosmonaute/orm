@@ -1,9 +1,13 @@
 import fs from "fs"
 import url from "url"
-import path from "path"
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table.js"
+
+const pack = JSON.parse(fs.readFileSync("./package.json", "utf8"))
+const isCJS = pack.type === "commonjs" || pack.type == void 0
+
+console.log(pack)
 
 export interface ORMLogger {
   log: (message: string, section?: string) => void
@@ -48,9 +52,7 @@ export class ORM extends Handler {
       const tables: Table<any>[] = await Promise.all(
         pathList.map(async (filepath) => {
           return import(
-            fs.existsSync(path.join(__dirname, "..", "..", "cjs"))
-              ? filepath
-              : url.pathToFileURL(filepath).href
+            isCJS ? filepath : url.pathToFileURL(filepath).href
           ).then((file) => file.default)
         })
       )
