@@ -1,6 +1,6 @@
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
-import { MigrationData, Table } from "./table"
+import { MigrationData, Table } from "./table.js"
 
 export interface ORMLogger {
   log: (message: string, section?: string) => void

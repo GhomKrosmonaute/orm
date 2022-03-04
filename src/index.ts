@@ -1,2 +1,2 @@
-export * from "./app/orm"
-export * from "./app/table"
+export * from "./app/orm.js"
+export * from "./app/table.js"

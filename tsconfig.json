@@ -3,6 +3,7 @@
     "strict": true,
     "rootDir": "src",
     "target": "es2020",
+    "module": "CommonJS",
     "lib": ["es2020", "dom"],
     "moduleResolution": "Node",
     "esModuleInterop": true
