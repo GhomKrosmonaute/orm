@@ -1,4 +1,4 @@
-const { Table } = require("../../dist/index")
+const { Table } = require("../..")
 
 module.exports = new Table({
   name: "b",

@@ -1,16 +1,21 @@
 {
   "name": "@ghom/orm",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/typings/index.d.ts",
   "description": "TypeScript KnexJS ORM & handler",
   "prettier": {
     "semi": false
   },
+  "exports": {
+    "import": "./dist/esm/index.js",
+    "require": "./dist/cjs/index.js"
+  },
   "scripts": {
     "format": "prettier --write src tsconfig.*",
-    "build": "tsc",
+    "build": "rm -fr dist/* && tsc -p tsconfig-esm.json && tsc -p tsconfig-cjs.json && fixup.sh",
     "test": "npm run build && jest tests/test.js --detectOpenHandles",
     "prepublishOnly": "npm run format && npm test"
   },

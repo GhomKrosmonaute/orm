@@ -1,6 +1,6 @@
 require("dotenv").config({ path: "./.env" })
 const path = require("path")
-const { ORM } = require("../dist/index")
+const { ORM } = require("..")
 const a = require("./tables/a")
 const b = require("./tables/b")
 const c = require("./tables/c")
