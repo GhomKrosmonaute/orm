@@ -7,7 +7,7 @@ const c = require("./tables/c")
 
 const orm = new ORM({
   tablePath: path.join(__dirname, "tables"),
-  verbose: false,
+  logger: console,
 })
 
 beforeAll(async () => {

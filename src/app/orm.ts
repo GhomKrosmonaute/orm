@@ -2,12 +2,20 @@ import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table"
 
+export interface ORMLogger {
+  log: (message: string | number, ...parts: (string | number)[]) => unknown
+  error: (
+    err: Error | string | number,
+    ...parts: (string | number)[]
+  ) => unknown
+}
+
 /**
  * @property tablePath - path to directory that contains js files of tables
  * @property verbose - show console logs or not
  */
 export interface ORMConfig {
-  verbose?: boolean
+  logger?: ORMLogger
   tablePath: string
 }
 

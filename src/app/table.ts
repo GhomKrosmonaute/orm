@@ -21,7 +21,12 @@ export class Table<Type> {
 
   private get verbose() {
     if (!this.orm) throw new Error("missing ORM")
-    return this.orm.ormConfig.verbose
+    return !!this.orm.ormConfig.logger
+  }
+
+  private get logger() {
+    if (!this.orm) throw new Error("missing ORM")
+    return this.orm.ormConfig.logger
   }
 
   get db() {
@@ -47,17 +52,16 @@ export class Table<Type> {
   async make(): Promise<this> {
     try {
       await this.db.schema.createTable(this.options.name, this.options.setup)
-      if (this.verbose) console.log(`created table ${this.options.name}`)
+      this.logger?.log(`created table ${this.options.name}`)
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
-        if (this.verbose)
-          console.error(
-            `you need to implement the "setup" method in options of your ${this.options.name} table!`
-          )
+        this.logger?.error(
+          `you need to implement the "setup" method in options of your ${this.options.name} table!`
+        )
 
         throw error
       } else {
-        if (this.verbose) console.log(`loaded table ${this.options.name}`)
+        this.logger?.log("loaded table", this.options.name)
       }
     }
 
@@ -65,13 +69,15 @@ export class Table<Type> {
       const migrated = await this.migrate()
 
       if (migrated !== false) {
-        if (this.verbose)
-          console.log(
-            `migrated table ${this.options.name} to version ${migrated}`
-          )
+        this.logger?.log(
+          "migrated table",
+          this.options.name,
+          "to version",
+          migrated
+        )
       }
     } catch (error: any) {
-      if (this.verbose) console.error(error)
+      this.logger?.error(error)
     }
 
     await this.options.then?.bind(this)(this)
