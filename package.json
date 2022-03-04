@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ghom/handler": "^1.1.0",
+    "chalk": "^4.1.2",
     "knex": "^1.0.3"
   }
 }

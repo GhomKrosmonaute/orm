@@ -1,3 +1,5 @@
+import path from "path"
+import chalk from "chalk"
 import { Knex } from "knex"
 import { ORM } from "./orm.js"
 
@@ -19,9 +21,12 @@ export class Table<Type> {
 
   constructor(public readonly options: TableOptions<Type>) {}
 
-  private get verbose() {
+  private get filepath() {
     if (!this.orm) throw new Error("missing ORM")
-    return !!this.orm.ormConfig.logger
+    return path.relative(
+      process.cwd(),
+      path.join(this.orm.ormConfig.tablePath, this.options.name + ".ts")
+    )
   }
 
   private get logger() {
@@ -52,16 +57,19 @@ export class Table<Type> {
   async make(): Promise<this> {
     try {
       await this.db.schema.createTable(this.options.name, this.options.setup)
-      this.logger?.log(`created table ${this.options.name}`)
+      this.logger?.log(`created table ${chalk.blueBright(this.options.name)}`)
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
         this.logger?.error(
-          `you need to implement the "setup" method in options of your ${this.options.name} table!`
+          `you need to implement the "setup" method in options of your ${chalk.blueBright(
+            this.options.name
+          )} table!`,
+          this.filepath
         )
 
         throw error
       } else {
-        this.logger?.log("loaded table", this.options.name)
+        this.logger?.log(`loaded table ${chalk.blueBright(this.options.name)}`)
       }
     }
 
@@ -70,14 +78,13 @@ export class Table<Type> {
 
       if (migrated !== false) {
         this.logger?.log(
-          "migrated table",
-          this.options.name,
-          "to version",
-          migrated
+          `migrated table ${chalk.blueBright(
+            this.options.name
+          )} to version ${chalk.magentaBright(migrated)}`
         )
       }
     } catch (error: any) {
-      this.logger?.error(error)
+      this.logger?.error(error, this.filepath)
     }
 
     await this.options.then?.bind(this)(this)

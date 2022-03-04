@@ -3,11 +3,8 @@ import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table"
 
 export interface ORMLogger {
-  log: (message: string | number, ...parts: (string | number)[]) => unknown
-  error: (
-    err: Error | string | number,
-    ...parts: (string | number)[]
-  ) => unknown
+  log: (message: string, section?: string) => void
+  error: (text: string | Error, _path: string, full?: boolean) => void
 }
 
 /**
