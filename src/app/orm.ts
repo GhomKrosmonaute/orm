@@ -1,3 +1,4 @@
+import url from "url"
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table.js"
@@ -44,7 +45,9 @@ export class ORM extends Handler {
     this.once("finish", async (pathList) => {
       const tables: Table<any>[] = await Promise.all(
         pathList.map(async (filepath) => {
-          return import(filepath).then((file) => file.default)
+          return import(
+            require !== void 0 ? filepath : url.pathToFileURL(filepath).href
+          ).then((file) => file.default)
         })
       )
 
