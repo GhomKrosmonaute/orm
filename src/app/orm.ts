@@ -7,8 +7,6 @@ import { MigrationData, Table } from "./table.js"
 const pack = JSON.parse(fs.readFileSync("./package.json", "utf8"))
 const isCJS = pack.type === "commonjs" || pack.type == void 0
 
-console.log(pack)
-
 export interface ORMLogger {
   log: (message: string, section?: string) => void
   error: (text: string | Error, _path: string, full?: boolean) => void
