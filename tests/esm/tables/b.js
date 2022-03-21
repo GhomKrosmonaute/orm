@@ -1,4 +1,4 @@
-const { Table } = require("../..")
+import { Table } from "../../../dist/esm"
 
 module.exports = new Table({
   name: "b",

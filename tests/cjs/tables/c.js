@@ -1,4 +1,4 @@
-const { Table } = require("../..")
+const { Table } = require("../../../dist/cjs")
 
 module.exports = new Table({
   name: "c",

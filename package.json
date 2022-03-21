@@ -16,7 +16,9 @@
   "scripts": {
     "format": "prettier --write src tsconfig.*",
     "build": "rm -fr dist/* && tsc -p tsconfig-esm.json && tsc -p tsconfig-cjs.json && fixup.sh",
-    "test": "npm run build && jest tests/test.js --detectOpenHandles",
+    "test": "npm run build && npm run test.cjs && npm run test.esm",
+    "test.cjs": "jest tests/cjs/test.js --detectOpenHandles",
+    "test.esm": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config tests/esm/jest.config.js tests/esm/test.js",
     "prepublishOnly": "npm run format && npm test"
   },
   "devDependencies": {
