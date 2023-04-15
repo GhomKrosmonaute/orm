@@ -1,6 +1,6 @@
-const { Table } = require("../..")
+import { Table } from "../.."
 
-module.exports = new Table({
+export default new Table({
   name: "c",
   priority: 2,
   setup(table) {

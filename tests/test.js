@@ -1,12 +1,16 @@
-require("dotenv").config({ path: "./.env" })
-const path = require("path")
-const { ORM } = require("..")
-const a = require("./tables/a")
-const b = require("./tables/b")
-const c = require("./tables/c")
+import dotenv from "dotenv"
+import path from "path"
+
+dotenv.config({ path: "./.env" })
+
+import { ORM } from "../"
+
+import a from "./tables/a"
+import b from "./tables/b"
+import c from "./tables/c"
 
 const orm = new ORM({
-  tablePath: path.join(__dirname, "tables"),
+  tablePath: path.join("tests","tables"),
   logger: console,
 })
 

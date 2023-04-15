@@ -1,6 +1,6 @@
-const { Table } = require("../..")
+import { Table } from "../.."
 
-module.exports = new Table({
+export default new Table({
   name: "b",
   migrations: {
     0: (table) =>
@@ -9,7 +9,7 @@ module.exports = new Table({
         .references("id")
         .inTable("c")
         .onDelete("cascade")
-        .notNullable(),
+        .notNullable()
   },
   priority: 1,
   setup(table) {
