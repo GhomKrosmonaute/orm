@@ -8,7 +8,7 @@ export interface MigrationData {
   version: number
 }
 
-export interface TableOptions<Type> {
+export interface TableOptions<Type extends {}> {
   name: string
   priority?: number
   migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
@@ -16,7 +16,7 @@ export interface TableOptions<Type> {
   setup: (table: Knex.CreateTableBuilder) => void
 }
 
-export class Table<Type> {
+export class Table<Type extends {}> {
   orm?: ORM
 
   constructor(public readonly options: TableOptions<Type>) {}
