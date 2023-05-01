@@ -1,4 +1,3 @@
-import path from "path"
 import chalk from "chalk"
 import { Knex } from "knex"
 import { ORM } from "./orm.js"
@@ -21,22 +20,9 @@ export class Table<Type extends {}> {
 
   constructor(public readonly options: TableOptions<Type>) {}
 
-  private get filepath() {
-    if (!this.orm) throw new Error("missing ORM")
-    return path.relative(
-      process.cwd(),
-      path.join(this.orm.ormConfig.tablePath, this.options.name + ".ts")
-    )
-  }
-
-  private get logger() {
-    if (!this.orm) throw new Error("missing ORM")
-    return this.orm.ormConfig.logger
-  }
-
   get db() {
     if (!this.orm) throw new Error("missing ORM")
-    return this.orm.db
+    return this.orm.database
   }
 
   get query() {
@@ -55,21 +41,31 @@ export class Table<Type extends {}> {
   }
 
   async make(): Promise<this> {
+    if (!this.orm) throw new Error("missing ORM")
+
     try {
       await this.db.schema.createTable(this.options.name, this.options.setup)
-      this.logger?.log(`created table ${chalk.blueBright(this.options.name)}`)
+
+      this.orm.config.logger?.log(
+        `created table ${chalk[
+          this.orm.config.loggerColors?.highlight ?? "blueBright"
+        ](this.options.name)}`
+      )
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
-        this.logger?.error(
-          `you need to implement the "setup" method in options of your ${chalk.blueBright(
-            this.options.name
-          )} table!`,
-          this.filepath
+        this.orm.config.logger?.error(
+          `you need to implement the "setup" method in options of your ${chalk[
+            this.orm.config.loggerColors?.highlight ?? "blueBright"
+          ](this.options.name)} table!`
         )
 
         throw error
       } else {
-        this.logger?.log(`loaded table ${chalk.blueBright(this.options.name)}`)
+        this.orm.config.logger?.log(
+          `loaded table ${chalk[
+            this.orm.config.loggerColors?.highlight ?? "blueBright"
+          ](this.options.name)}`
+        )
       }
     }
 
@@ -77,14 +73,16 @@ export class Table<Type extends {}> {
       const migrated = await this.migrate()
 
       if (migrated !== false) {
-        this.logger?.log(
-          `migrated table ${chalk.blueBright(
-            this.options.name
-          )} to version ${chalk.magentaBright(migrated)}`
+        this.orm.config.logger?.log(
+          `migrated table ${chalk[
+            this.orm.config.loggerColors?.highlight ?? "blueBright"
+          ](this.options.name)} to version ${chalk[
+            this.orm.config.loggerColors?.rawValue ?? "magentaBright"
+          ](migrated)}`
         )
       }
     } catch (error: any) {
-      this.logger?.error(error, this.filepath)
+      this.orm.config.logger?.error(error)
     }
 
     await this.options.then?.bind(this)(this)
