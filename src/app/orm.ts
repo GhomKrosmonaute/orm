@@ -13,7 +13,7 @@ const isCJS = pack.type === "commonjs" || pack.type == void 0
 
 export interface ILogger {
   log: (...message: string[]) => void
-  error: (error: Error | string, ...message: string[]) => void
+  error: (error: Error | string) => void
 }
 
 export interface ORMConfig {
