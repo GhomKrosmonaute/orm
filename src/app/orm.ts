@@ -61,6 +61,7 @@ export class ORM {
         import(isCJS ? filepath : url.pathToFileURL(filepath).href).then(
           (file) => file.default
         ),
+      pattern: /\.js$/,
     })
   }
 

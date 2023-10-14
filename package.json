@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "license": "MIT",
   "type": "module",
   "main": "dist/esm/index.js",
@@ -33,7 +33,7 @@
     "sqlite3": "^5.1.6"
   },
   "dependencies": {
-    "@ghom/handler": "^1.2.0",
+    "@ghom/handler": "^1.3.0",
     "knex": "^2.4.2"
   }
 }
