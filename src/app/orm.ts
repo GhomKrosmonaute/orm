@@ -92,4 +92,71 @@ export class ORM {
       await table.make()
     }
   }
+
+  /**
+   * Extract the database to a CSV file.
+   */
+  async extract(dir = process.cwd()) {
+    const tables = [...this.handler.elements.values()]
+
+    for (const table of tables) {
+      await this.database
+        .select()
+        .from(table.options.name)
+        .then((rows) => {
+          const csv = rows.map((row) => Object.values(row).join(",")).join("\n")
+
+          fs.writeFileSync(
+            path.join(dir, `${table.options.name}.csv`),
+            csv,
+            "utf8"
+          )
+        })
+    }
+  }
+
+  /**
+   * Import a CSV file to the database.
+   */
+  async import(dir = process.cwd()) {
+    const tables = [...this.handler.elements.values()].sort(
+      (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0)
+    )
+
+    for (const table of tables) {
+      const columnInfo = await table.getColumns()
+
+      let csv: string
+
+      try {
+        csv = fs.readFileSync(
+          path.join(dir, `${table.options.name}.csv`),
+          "utf8"
+        )
+      } catch (error) {
+        continue
+      }
+
+      if (csv.trim().length === 0) continue
+
+      const rows = csv
+        .split("\n")
+        .map((row) => row.split(","))
+        .map((row) => {
+          const data: any = {}
+
+          let index = 0
+
+          for (const [name, info] of Object.entries(columnInfo)) {
+            data[name] =
+              info.type === "integer" ? Number(row[index]) : row[index]
+            index++
+          }
+
+          return data
+        })
+
+      await this.database(table.options.name).insert(rows)
+    }
+  }
 }

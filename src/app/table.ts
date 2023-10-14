@@ -33,6 +33,14 @@ export class Table<Type extends {}> {
     return this.db.schema.hasColumn(this.options.name, name as string)
   }
 
+  async getColumns() {
+    return this.db(this.options.name).columnInfo()
+  }
+
+  async getColumnNames() {
+    return this.getColumns().then(Object.keys)
+  }
+
   async isEmpty(): Promise<boolean> {
     return this.query
       .select()
