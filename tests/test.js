@@ -20,18 +20,23 @@ beforeAll(async () => {
 
 describe("table management", () => {
   test("tables created", async () => {
-    expect(await orm.database.schema.hasTable("migration")).toBeTruthy()
-    expect(await orm.database.schema.hasTable("a")).toBeTruthy()
-    expect(await orm.database.schema.hasTable("b")).toBeTruthy()
-    expect(await orm.database.schema.hasTable("c")).toBeTruthy()
+    expect(await orm.hasTable("migration")).toBeTruthy()
+    expect(await orm.hasTable("a")).toBeTruthy()
+    expect(await orm.hasTable("b")).toBeTruthy()
+    expect(await orm.hasTable("c")).toBeTruthy()
+
+    expect(orm.hasCachedTable("migration")).toBeTruthy()
+    expect(orm.hasCachedTable("a")).toBeTruthy()
+    expect(orm.hasCachedTable("b")).toBeTruthy()
+    expect(orm.hasCachedTable("c")).toBeTruthy()
   })
 
   test("migrations ran", async () => {
-    expect(await orm.database.schema.hasColumn("b", "c_id")).toBeTruthy()
+    expect(await b.hasColumn("c_id")).toBeTruthy()
   })
 
   test("then ran", async () => {
-    const rows = await orm.database("a").select()
+    const rows = await a.query.select()
 
     expect(rows.length).toBe(1)
   })
@@ -100,6 +105,24 @@ describe("database migration", () => {
     expect(await a.isEmpty()).toBeFalsy()
     expect(await b.isEmpty()).toBeFalsy()
     expect(await c.isEmpty()).toBeFalsy()
+  })
+})
+
+describe("table getters", () => {
+  test("table info", async () => {
+    expect(await a.getColumnNames()).toContain("id")
+    expect(await a.getColumnNames()).toContain("b_id")
+
+    expect(await b.getColumnNames()).toContain("id")
+    expect(await b.getColumnNames()).toContain("c_id")
+
+    expect(await c.getColumnNames()).toContain("id")
+  })
+
+  test("table names", async () => {
+    expect(orm.cachedTableNames).toContain("a")
+    expect(orm.cachedTableNames).toContain("b")
+    expect(orm.cachedTableNames).toContain("c")
   })
 })
 

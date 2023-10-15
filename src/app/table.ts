@@ -7,7 +7,7 @@ export interface MigrationData {
   version: number
 }
 
-export interface TableOptions<Type extends {}> {
+export interface TableOptions<Type extends object = object> {
   name: string
   priority?: number
   migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
@@ -15,7 +15,7 @@ export interface TableOptions<Type extends {}> {
   setup: (table: Knex.CreateTableBuilder) => void
 }
 
-export class Table<Type extends {}> {
+export class Table<Type extends object = object> {
   orm?: ORM
 
   constructor(public readonly options: TableOptions<Type>) {}
@@ -29,23 +29,31 @@ export class Table<Type extends {}> {
     return this.db<Type>(this.options.name)
   }
 
+  async count(where?: string): Promise<number> {
+    return this.query
+      .select(this.db.raw("count(*) as total"))
+      .whereRaw(where ?? "1=1")
+      .then((rows) => (rows[0] as unknown as { total: number }).total)
+  }
+
   async hasColumn(name: keyof Type): Promise<boolean> {
     return this.db.schema.hasColumn(this.options.name, name as string)
   }
 
-  async getColumns() {
+  async getColumn(name: keyof Type): Promise<Knex.ColumnInfo> {
+    return this.db(this.options.name).columnInfo(name)
+  }
+
+  async getColumns(): Promise<Record<keyof Type, Knex.ColumnInfo>> {
     return this.db(this.options.name).columnInfo()
   }
 
-  async getColumnNames() {
-    return this.getColumns().then(Object.keys)
+  async getColumnNames(): Promise<Array<keyof Type>> {
+    return this.getColumns().then(Object.keys) as Promise<Array<keyof Type>>
   }
 
   async isEmpty(): Promise<boolean> {
-    return this.query
-      .select()
-      .limit(1)
-      .then((rows) => rows.length === 0)
+    return this.count().then((count) => count === 0)
   }
 
   async make(): Promise<this> {
@@ -91,9 +99,11 @@ export class Table<Type extends {}> {
       }
     } catch (error: any) {
       this.orm.config.logger?.error(error)
+
+      throw error
     }
 
-    await this.options.then?.bind(this)(this)
+    if ((await this.count()) === 0) await this.options.then?.bind(this)(this)
 
     return this
   }

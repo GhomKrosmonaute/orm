@@ -43,8 +43,8 @@ export interface ORMConfig {
 }
 
 export class ORM {
-  database: Knex
-  handler: Handler<Table<any>>
+  public database: Knex
+  public handler: Handler<Table<any>>
 
   constructor(public config: ORMConfig) {
     this.database = knex(
@@ -56,6 +56,7 @@ export class ORM {
         },
       }
     )
+
     this.handler = new Handler(config.location, {
       loader: (filepath) =>
         import(isCJS ? filepath : url.pathToFileURL(filepath).href).then(
@@ -65,10 +66,27 @@ export class ORM {
     })
   }
 
+  get cachedTables() {
+    return [...this.handler.elements.values()]
+  }
+
+  get cachedTableNames() {
+    return this.cachedTables.map((table) => table.options.name)
+  }
+
+  hasCachedTable(name: string) {
+    return this.cachedTables.some((table) => table.options.name)
+  }
+
+  async hasTable(name: string): Promise<boolean> {
+    return this.database.schema.hasTable(name)
+  }
+
+  /**
+   * Handle the table files and create the tables in the database.
+   */
   async init() {
     await this.handler.init()
-
-    const tables = [...this.handler.elements.values()]
 
     try {
       await this.database.raw("PRAGMA foreign_keys = ON;")
@@ -86,12 +104,16 @@ export class ORM {
     migration.orm = this
     await migration.make()
 
-    for (const table of tables.sort(
+    for (const table of this.cachedTables.sort(
       (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0)
     )) {
       table.orm = this
       await table.make()
     }
+  }
+
+  async raw(sql: Knex.Value): Promise<Knex.Raw> {
+    return this.database.raw(sql)
   }
 
   /**
