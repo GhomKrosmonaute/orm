@@ -112,7 +112,7 @@ export class ORM {
     }
   }
 
-  async raw(sql: Knex.Value): Promise<Knex.Raw> {
+  raw(sql: Knex.Value): Knex.Raw {
     return this.database.raw(sql)
   }
 
