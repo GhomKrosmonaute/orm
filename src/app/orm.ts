@@ -4,16 +4,19 @@ import path from "path"
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { MigrationData, Table } from "./table.js"
-import { Color } from "chalk"
+import chalk, { Color } from "chalk"
+
+const defaultBackupDir = path.join(process.cwd(), "backup")
 
 const pack = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")
+  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
 )
 const isCJS = pack.type === "commonjs" || pack.type == void 0
 
 export interface ILogger {
-  log: (...message: string[]) => void
-  error: (error: Error | string) => void
+  log: (message: string) => void
+  error: (error: string | Error) => void
+  warn: (warning: string) => void
 }
 
 export interface ORMConfig {
@@ -54,13 +57,13 @@ export class ORM {
         connection: {
           filename: ":memory:",
         },
-      }
+      },
     )
 
     this.handler = new Handler(config.location, {
       loader: (filepath) =>
         import(isCJS ? filepath : url.pathToFileURL(filepath).href).then(
-          (file) => file.default
+          (file) => file.default,
         ),
       pattern: /\.js$/,
     })
@@ -105,7 +108,7 @@ export class ORM {
     await migration.make()
 
     for (const table of this.cachedTables.sort(
-      (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0)
+      (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
     )) {
       table.orm = this
       await table.make()
@@ -116,70 +119,76 @@ export class ORM {
     return this.database.raw(sql)
   }
 
-  /**
-   * Extract the database to a CSV file.
-   */
-  async extract(dir = process.cwd()) {
-    const tables = [...this.handler.elements.values()]
-
-    for (const table of tables) {
-      await this.database
-        .select()
-        .from(table.options.name)
-        .then((rows) => {
-          const csv = rows.map((row) => Object.values(row).join(",")).join("\n")
-
-          fs.writeFileSync(
-            path.join(dir, `${table.options.name}.csv`),
-            csv,
-            "utf8"
-          )
-        })
-    }
-  }
-
-  /**
-   * Import a CSV file to the database.
-   */
-  async import(dir = process.cwd()) {
-    const tables = [...this.handler.elements.values()].sort(
-      (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0)
-    )
-
-    for (const table of tables) {
-      const columnInfo = await table.getColumns()
-
-      let csv: string
-
-      try {
-        csv = fs.readFileSync(
-          path.join(dir, `${table.options.name}.csv`),
-          "utf8"
-        )
-      } catch (error) {
-        continue
-      }
-
-      if (csv.trim().length === 0) continue
-
-      const rows = csv
-        .split("\n")
-        .map((row) => row.split(","))
-        .map((row) => {
-          const data: any = {}
-
-          let index = 0
-
-          for (const [name, info] of Object.entries(columnInfo)) {
-            data[name] =
-              info.type === "integer" ? Number(row[index]) : row[index]
-            index++
-          }
-
-          return data
-        })
-
-      await this.database(table.options.name).insert(rows)
-    }
-  }
+  // /**
+  //  * Extract the database to a CSV file for each table.
+  //  */
+  // async createBackup(dir = defaultBackupDir) {
+  //   const tables = [...this.handler.elements.values()]
+  //
+  //   for (const table of tables) {
+  //     await this.database
+  //       .select()
+  //       .from(table.options.name)
+  //       .then(async (rows) => {
+  //         const csv = rows.map((row) => Object.values(row).join(",")).join("\n")
+  //
+  //         return fs.promises.writeFile(
+  //           path.join(dir, `${table.options.name}.csv`),
+  //           csv,
+  //           "utf8",
+  //         )
+  //       })
+  //   }
+  // }
+  //
+  // /**
+  //  * Import a CSV file for each table to the database.
+  //  */
+  // async restoreBackup(dir = defaultBackupDir) {
+  //   const tables = [...this.handler.elements.values()].sort(
+  //     (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
+  //   )
+  //
+  //   for (const table of tables) {
+  //     const columnInfo = await table.getColumns()
+  //
+  //     let csv: string
+  //
+  //     try {
+  //       csv = await fs.promises.readFile(
+  //         path.join(dir, `${table.options.name}.csv`),
+  //         "utf8",
+  //       )
+  //     } catch (error) {
+  //       this.config.logger?.warn(
+  //         `missing backup file for table ${chalk[
+  //           this.config.loggerColors?.highlight ?? "blueBright"
+  //         ](table.options.name)}`,
+  //       )
+  //
+  //       continue
+  //     }
+  //
+  //     if (csv.trim().length === 0) continue
+  //
+  //     const rows = csv
+  //       .split("\n")
+  //       .map((row) => row.split(","))
+  //       .map((row) => {
+  //         const data: any = {}
+  //
+  //         let index = 0
+  //
+  //         for (const [name, info] of Object.entries(columnInfo)) {
+  //           data[name] =
+  //             info.type === "integer" ? Number(row[index]) : row[index]
+  //           index++
+  //         }
+  //
+  //         return data
+  //       })
+  //
+  //     await this.database(table.options.name).insert(rows)
+  //   }
+  // }
 }

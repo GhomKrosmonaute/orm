@@ -36,20 +36,22 @@ export class Table<Type extends object = object> {
       .then((rows) => (rows[0] as unknown as { total: number }).total)
   }
 
-  async hasColumn(name: keyof Type): Promise<boolean> {
+  async hasColumn(name: keyof Type & string): Promise<boolean> {
     return this.db.schema.hasColumn(this.options.name, name as string)
   }
 
-  async getColumn(name: keyof Type): Promise<Knex.ColumnInfo> {
+  async getColumn(name: keyof Type & string): Promise<Knex.ColumnInfo> {
     return this.db(this.options.name).columnInfo(name)
   }
 
-  async getColumns(): Promise<Record<keyof Type, Knex.ColumnInfo>> {
+  async getColumns(): Promise<Record<keyof Type & string, Knex.ColumnInfo>> {
     return this.db(this.options.name).columnInfo()
   }
 
-  async getColumnNames(): Promise<Array<keyof Type>> {
-    return this.getColumns().then(Object.keys) as Promise<Array<keyof Type>>
+  async getColumnNames(): Promise<Array<keyof Type & string>> {
+    return this.getColumns().then(Object.keys) as Promise<
+      Array<keyof Type & string>
+    >
   }
 
   async isEmpty(): Promise<boolean> {
@@ -65,14 +67,14 @@ export class Table<Type extends object = object> {
       this.orm.config.logger?.log(
         `created table ${chalk[
           this.orm.config.loggerColors?.highlight ?? "blueBright"
-        ](this.options.name)}`
+        ](this.options.name)}`,
       )
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
         this.orm.config.logger?.error(
           `you need to implement the "setup" method in options of your ${chalk[
             this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)} table!`
+          ](this.options.name)} table!`,
         )
 
         throw error
@@ -80,7 +82,7 @@ export class Table<Type extends object = object> {
         this.orm.config.logger?.log(
           `loaded table ${chalk[
             this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)}`
+          ](this.options.name)}`,
         )
       }
     }
@@ -94,7 +96,7 @@ export class Table<Type extends object = object> {
             this.orm.config.loggerColors?.highlight ?? "blueBright"
           ](this.options.name)} to version ${chalk[
             this.orm.config.loggerColors?.rawValue ?? "magentaBright"
-          ](migrated)}`
+          ](migrated)}`,
         )
       }
     } catch (error: any) {
@@ -117,7 +119,7 @@ export class Table<Type extends object = object> {
     >(
       Object.entries(this.options.migrations)
         .sort((a, b) => Number(a[0]) - Number(b[0]))
-        .map((entry) => [Number(entry[0]), entry[1]])
+        .map((entry) => [Number(entry[0]), entry[1]]),
     )
 
     const fromDatabase = await this.db<MigrationData>("migration")

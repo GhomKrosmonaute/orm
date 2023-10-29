@@ -54,7 +54,7 @@ describe("table column types", () => {
       await orm
         .database("a")
         .columnInfo("id")
-        .then((info) => info.type)
+        .then((info) => info.type),
     ).toBe("integer")
   })
 
@@ -63,50 +63,50 @@ describe("table column types", () => {
       await orm
         .database("a")
         .columnInfo("b_id")
-        .then((info) => info.type)
+        .then((info) => info.type),
     ).toBe("integer")
   })
 })
 
-describe("database migration", () => {
-  beforeAll(async () => {
-    await c.query.insert({ id: 0 })
-    await b.query.insert({
-      id: 0,
-      c_id: 0,
-    })
-    await a.query.insert({
-      id: 0,
-      b_id: 0,
-    })
-  })
-
-  test("extract CSV", async () => {
-    await orm.extract()
-
-    expect(fs.existsSync("a.csv")).toBeTruthy()
-    expect(fs.existsSync("b.csv")).toBeTruthy()
-    expect(fs.existsSync("c.csv")).toBeTruthy()
-  })
-
-  test("empty tables", async () => {
-    await a.query.del()
-    await b.query.del()
-    await c.query.del()
-
-    expect(await a.isEmpty()).toBeTruthy()
-    expect(await b.isEmpty()).toBeTruthy()
-    expect(await c.isEmpty()).toBeTruthy()
-  })
-
-  test("import CSV", async () => {
-    await orm.import()
-
-    expect(await a.isEmpty()).toBeFalsy()
-    expect(await b.isEmpty()).toBeFalsy()
-    expect(await c.isEmpty()).toBeFalsy()
-  })
-})
+// describe("database extraction", () => {
+//   beforeAll(async () => {
+//     await c.query.insert({ id: 0 })
+//     await b.query.insert({
+//       id: 0,
+//       c_id: 0,
+//     })
+//     await a.query.insert({
+//       id: 0,
+//       b_id: 0,
+//     })
+//   })
+//
+//   test("extract CSV", async () => {
+//     await orm.extract()
+//
+//     expect(fs.existsSync("a.csv")).toBeTruthy()
+//     expect(fs.existsSync("b.csv")).toBeTruthy()
+//     expect(fs.existsSync("c.csv")).toBeTruthy()
+//   })
+//
+//   test("empty tables", async () => {
+//     await a.query.del()
+//     await b.query.del()
+//     await c.query.del()
+//
+//     expect(await a.isEmpty()).toBeTruthy()
+//     expect(await b.isEmpty()).toBeTruthy()
+//     expect(await c.isEmpty()).toBeTruthy()
+//   })
+//
+//   test("import CSV", async () => {
+//     await orm.import()
+//
+//     expect(await a.isEmpty()).toBeFalsy()
+//     expect(await b.isEmpty()).toBeFalsy()
+//     expect(await c.isEmpty()).toBeFalsy()
+//   })
+// })
 
 describe("table getters", () => {
   test("table info", async () => {
@@ -128,7 +128,7 @@ describe("table getters", () => {
 
 afterAll(async () => {
   await orm.database.destroy()
-  fs.unlinkSync("a.csv")
-  fs.unlinkSync("b.csv")
-  fs.unlinkSync("c.csv")
+  // fs.unlinkSync("a.csv")
+  // fs.unlinkSync("b.csv")
+  // fs.unlinkSync("c.csv")
 })

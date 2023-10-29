@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "license": "MIT",
   "type": "module",
   "main": "dist/esm/index.js",
@@ -20,20 +20,20 @@
     "prepublishOnly": "npm run format && npm test"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.1",
-    "@types/node": "^18.16.3",
-    "dotenv": "^16.0.3",
-    "jest": "^29.5.0",
-    "prettier": "^2.8.8",
-    "typescript": "^5.0.4"
+    "@types/jest": "^29.5.6",
+    "@types/node": "^20.8.9",
+    "dotenv": "^16.3.1",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
   },
   "optionalDependencies": {
-    "mysql2": "^3.2.4",
-    "pg": "^8.10.0",
+    "mysql2": "^3.6.2",
+    "pg": "^8.11.3",
     "sqlite3": "^5.1.6"
   },
   "dependencies": {
     "@ghom/handler": "^2.0.0",
-    "knex": "^2.4.2"
+    "knex": "^3.0.1"
   }
 }
