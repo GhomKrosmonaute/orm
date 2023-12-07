@@ -22,9 +22,12 @@ const orm = new ORM({
   logger: console,
   loggerColors: { ... }
 })
+
+// start handling of tables
+await orm.init()
 ```
 
-## Tables
+## Add tables
 
 The tables are automatically loaded from the `location` directory.
 
@@ -33,7 +36,12 @@ The tables are automatically loaded from the `location` directory.
 
 import { Table } from "@ghom/orm"
 
-export default new Table({
+interface User {
+  username: string
+  password: string
+}
+
+export default new Table<User>({
   name: "user",
   
   // the higher the priority, the earlier the table is compiled
@@ -59,20 +67,57 @@ export default new Table({
 })
 ```
 
-## Query
+## Launch a query
 
-For more information about the query builder, see [knexjs.org](https://knexjs.org/).
-
-## Import/extract
-
-You can transfer the data from one instance of the ORM to another (between two database clients, for example between "pg" and "mysql2").
+For more information about the query builder, see [knexjs.org](https://knexjs.org/).  
+You can launch a SQL query on a table like that
 
 ```typescript
-await orm1.extract()
+import user from "./tables/user"
+
+export async function compareHash(username, hash): Promise<boolean> {
+  const user = await user.query
+    .select()
+    .where("username", username)
+    .first()
+
+  return user && user.password === hash
+}
 ```
+
+## Generate table files (foreseen feature)
+
+You can generate a table file from a TypeScript interface by using `<ORM>.generate()` like that
 
 ```typescript
-await orm2.import()
-```
+// from URL
+await orm.generate(new URL("./tables.ts"))
 
-The SQL structure isn't transferred, only the data. You must copy the table files to the other project.
+// with options
+await orm.generate(new URL("./tables.ts"), {
+  output: "js",
+  prettier: {...}
+})
+
+// from string
+await orm.generate(`
+  interface User {
+    _id: number
+    username: string
+    password: string
+    isAdmin: boolean
+    gender?: "♀" | "♂" | "⚥"
+  }
+`)
+
+// from object array
+await orm.generate([
+  {
+    _id: Number,
+    username: String,
+    password: String,
+    isAdmin: Boolean,
+    gender: [new Set(["♀", "♂", "⚥"])]
+  },
+)
+```
