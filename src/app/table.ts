@@ -9,6 +9,7 @@ export interface MigrationData {
 
 export interface TableOptions<Type extends object = object> {
   name: string
+  description?: string
   priority?: number
   migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
   then?: (this: Table<Type>, table: Table<Type>) => unknown
@@ -67,7 +68,13 @@ export class Table<Type extends object = object> {
       this.orm.config.logger?.log(
         `created table ${chalk[
           this.orm.config.loggerColors?.highlight ?? "blueBright"
-        ](this.options.name)}`,
+        ](this.options.name)}${
+          this.options.description
+            ? ` ${chalk[this.orm.config.loggerColors?.description ?? "grey"](
+                this.options.description,
+              )}`
+            : ""
+        }`,
       )
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
@@ -82,7 +89,13 @@ export class Table<Type extends object = object> {
         this.orm.config.logger?.log(
           `loaded table ${chalk[
             this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)}`,
+          ](this.options.name)}${
+            this.options.description
+              ? ` ${chalk[this.orm.config.loggerColors?.description ?? "grey"](
+                  this.options.description,
+                )}`
+              : ""
+          }`,
         )
       }
     }

@@ -42,6 +42,7 @@ export interface ORMConfig {
   loggerColors?: {
     highlight: typeof Color
     rawValue: typeof Color
+    description: typeof Color
   }
 }
 
