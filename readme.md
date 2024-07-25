@@ -85,39 +85,12 @@ export async function compareHash(username, hash): Promise<boolean> {
 }
 ```
 
-## Generate table files (foreseen feature)
+## Future features
 
-You can generate a table file from a TypeScript interface by using `<ORM>.generate()` like that
-
-```typescript
-// from URL
-await orm.generate(new URL("./tables.ts"))
-
-// with options
-await orm.generate(new URL("./tables.ts"), {
-  output: "js",
-  prettier: {...}
-})
-
-// from string
-await orm.generate(`
-  interface User {
-    _id: number
-    username: string
-    password: string
-    isAdmin: boolean
-    gender?: "♀" | "♂" | "⚥"
-  }
-`)
-
-// from object array
-await orm.generate([
-  {
-    _id: Number,
-    username: String,
-    password: String,
-    isAdmin: Boolean,
-    gender: [new Set(["♀", "♂", "⚥"])]
-  },
-)
-```
+- [ ] Take full control of the table creation
+- [ ] Add backup option
+- [ ] Add admin panel
+- [ ] Add shortcuts for advanced relative queries
+- [ ] Add timed caching system
+- [ ] Make possible to switch the data between all possible clients (pg, mysql, sqlite3)
+- [ ] Add a way to set up timezone directly in the ORM constructor
