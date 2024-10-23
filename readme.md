@@ -175,3 +175,9 @@ The cache of the `<ORM>.cache.raw` method is automatically invalidated when the 
 - [ ] Add admin panel
 - [ ] Make possible to switch the data between all possible clients (pg, mysql, sqlite3)
 - [ ] Add a way to set up timezone directly in the ORM constructor
+
+## Used by
+
+[<img src="https://github.com/GhomKrosmonaute.png?size=50" width=50>](https://github.com/GhomKrosmonaute)
+[<img src="https://github.com/Les-Laboratoires.png?size=50" width=50>](https://github.com/Les-Laboratoires)
+[<img src="https://github.com/bot-ts.png?size=50" width=50>](https://github.com/bot-ts)
