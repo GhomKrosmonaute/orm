@@ -3,13 +3,13 @@ import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { isCJS, TextStyle } from "./util.js"
 import { MigrationData, Table } from "./table.js"
+import { ResponseCache } from "./caching.js"
 import {
   backupTable,
   restoreBackup,
   disableForeignKeys,
   enableForeignKeys,
 } from "./backup.js"
-import { ResponseCache } from "./caching"
 
 export interface ILogger {
   log: (message: string) => void
