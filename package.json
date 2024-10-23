@@ -3,8 +3,8 @@
   "version": "1.8.0",
   "license": "MIT",
   "type": "module",
-  "main": "dist/esm/index.js",
-  "types": "dist/typings/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "description": "TypeScript KnexJS ORM & handler",
   "homepage": "https://github.com/GhomKrosmonaute/orm",
   "prettier": {
@@ -15,8 +15,8 @@
     "require": "./dist/cjs/index.js"
   },
   "scripts": {
-    "format": "prettier --write src tsconfig.*",
-    "build": "rimraf dist && tsc -p tsconfig-esm.json && tsc -p tsconfig-cjs.json && fixup.sh",
+    "format": "prettier --write src tsconfig.json tests",
+    "build": "rimraf dist && tsc",
     "test": "npm run build && node --experimental-vm-modules node_modules/jest/bin/jest.js tests/test.js --detectOpenHandles",
     "prepublishOnly": "npm run format && npm test"
   },
