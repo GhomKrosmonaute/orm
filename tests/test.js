@@ -1,4 +1,5 @@
 import dotenv from "dotenv"
+import { rimraf } from "rimraf"
 import path from "path"
 import fs from "fs"
 
@@ -11,7 +12,10 @@ import b from "./tables/b"
 import c from "./tables/c"
 
 const orm = new ORM({
-  location: path.join("tests", "tables"),
+  tableLocation: path.join(process.cwd(), "tests", "tables"),
+  backups: {
+    location: path.join(process.cwd(), "backups"),
+  },
 })
 
 beforeAll(async () => {
@@ -24,7 +28,9 @@ describe("table management", () => {
     expect(await orm.hasTable("a")).toBeTruthy()
     expect(await orm.hasTable("b")).toBeTruthy()
     expect(await orm.hasTable("c")).toBeTruthy()
+  })
 
+  test("table cached", async () => {
     expect(orm.hasCachedTable("migration")).toBeTruthy()
     expect(orm.hasCachedTable("a")).toBeTruthy()
     expect(orm.hasCachedTable("b")).toBeTruthy()
@@ -42,6 +48,8 @@ describe("table management", () => {
   })
 
   test("cascade delete", async () => {
+    expect(await a.isEmpty()).toBeFalsy()
+
     await c.query.del()
 
     expect(await a.isEmpty()).toBeTruthy()
@@ -68,45 +76,51 @@ describe("table column types", () => {
   })
 })
 
-// describe("database extraction", () => {
-//   beforeAll(async () => {
-//     await c.query.insert({ id: 0 })
-//     await b.query.insert({
-//       id: 0,
-//       c_id: 0,
-//     })
-//     await a.query.insert({
-//       id: 0,
-//       b_id: 0,
-//     })
-//   })
-//
-//   test("extract CSV", async () => {
-//     await orm.extract()
-//
-//     expect(fs.existsSync("a.csv")).toBeTruthy()
-//     expect(fs.existsSync("b.csv")).toBeTruthy()
-//     expect(fs.existsSync("c.csv")).toBeTruthy()
-//   })
-//
-//   test("empty tables", async () => {
-//     await a.query.del()
-//     await b.query.del()
-//     await c.query.del()
-//
-//     expect(await a.isEmpty()).toBeTruthy()
-//     expect(await b.isEmpty()).toBeTruthy()
-//     expect(await c.isEmpty()).toBeTruthy()
-//   })
-//
-//   test("import CSV", async () => {
-//     await orm.import()
-//
-//     expect(await a.isEmpty()).toBeFalsy()
-//     expect(await b.isEmpty()).toBeFalsy()
-//     expect(await c.isEmpty()).toBeFalsy()
-//   })
-// })
+describe("database extraction", () => {
+  beforeAll(async () => {
+    await c.query.insert({ id: 0 })
+    await b.query.insert({
+      id: 0,
+      c_id: 0,
+    })
+    await a.query.insert({
+      id: 0,
+      b_id: 0,
+    })
+  })
+
+  test("extract CSV", async () => {
+    await orm.createBackup()
+
+    expect(
+      fs.existsSync(path.join(orm.config.backups.location, "a_chunk_0.csv")),
+    ).toBeTruthy()
+    expect(
+      fs.existsSync(path.join(orm.config.backups.location, "b_chunk_0.csv")),
+    ).toBeTruthy()
+    expect(
+      fs.existsSync(path.join(orm.config.backups.location, "c_chunk_0.csv")),
+    ).toBeTruthy()
+  })
+
+  test("empty tables", async () => {
+    await a.query.del()
+    await b.query.del()
+    await c.query.del()
+
+    expect(await a.isEmpty()).toBeTruthy()
+    expect(await b.isEmpty()).toBeTruthy()
+    expect(await c.isEmpty()).toBeTruthy()
+  })
+
+  test("import CSV", async () => {
+    await orm.restoreBackup()
+
+    expect(await a.isEmpty()).toBeFalsy()
+    expect(await b.isEmpty()).toBeFalsy()
+    expect(await c.isEmpty()).toBeFalsy()
+  })
+})
 
 describe("table getters", () => {
   test("table info", async () => {
@@ -126,9 +140,72 @@ describe("table getters", () => {
   })
 })
 
+describe("data caching", () => {
+  beforeAll(async () => {
+    await c.query.del()
+    await c.query.insert([{ id: 1 }, { id: 2 }, { id: 3 }])
+    await b.query.insert([
+      { id: 1, c_id: 1 },
+      { id: 2, c_id: 2 },
+      { id: 3, c_id: 3 },
+    ])
+    await a.query.insert([
+      { id: 1, b_id: 1 },
+      { id: 2, b_id: 2 },
+      { id: 3, b_id: 3 },
+    ])
+  })
+
+  test("select with caching", async () => {
+    const rows = await a.cache.get("all a", (query) => {
+      return query.select("*")
+    })
+
+    expect(rows.length).toBe(3)
+  })
+
+  test("insert with caching", async () => {
+    await a.cache.set((query) => {
+      return query.insert({ id: 4, b_id: 1 })
+    })
+
+    expect(await a.cache.count()).toBe(4)
+  })
+
+  test("update with caching", async () => {
+    await a.cache.set((query) => {
+      return query.update({ b_id: 3 }).where({ id: 1 })
+    })
+
+    const row = await a.cache.get("a 1", (query) => {
+      return query.select("b_id").where({ id: 1 }).first()
+    })
+
+    expect(row.b_id).toBe(3)
+  })
+
+  test("delete with caching", async () => {
+    await a.cache.set((query) => {
+      return query.delete().where({ id: 1 })
+    })
+
+    expect(await a.cache.count()).toBe(3)
+  })
+
+  test("cache invalidation", async () => {
+    expect(await a.cache.count()).toBe(3)
+
+    await a.query.insert({ id: 5, b_id: 1 })
+
+    expect(await a.cache.count()).toBe(3)
+
+    orm.cache.invalidate()
+
+    expect(await a.cache.count()).toBe(4)
+  })
+})
+
 afterAll(async () => {
   await orm.database.destroy()
-  // fs.unlinkSync("a.csv")
-  // fs.unlinkSync("b.csv")
-  // fs.unlinkSync("c.csv")
+  await rimraf(orm.config.backups.location)
 })

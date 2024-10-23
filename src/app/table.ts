@@ -1,6 +1,12 @@
-import chalk from "chalk"
+import util from "util"
 import { Knex } from "knex"
 import { ORM } from "./orm.js"
+import { ResponseCache } from "./caching.js"
+import {
+  DEFAULT_LOGGER_DESCRIPTION,
+  DEFAULT_LOGGER_HIGHLIGHT,
+  DEFAULT_LOGGER_RAW_VALUE,
+} from "./util.js"
 
 export interface MigrationData {
   table: string
@@ -11,13 +17,25 @@ export interface TableOptions<Type extends object = object> {
   name: string
   description?: string
   priority?: number
+  /**
+   * The cache time in milliseconds. <br>
+   * Default is `Infinity`.
+   */
+  caching?: number
   migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
   then?: (this: Table<Type>, table: Table<Type>) => unknown
   setup: (table: Knex.CreateTableBuilder) => void
 }
 
 export class Table<Type extends object = object> {
-  orm?: ORM
+  public orm?: ORM
+
+  public _whereCache?: ResponseCache<
+    [cb: (query: Table<Type>["query"]) => unknown],
+    unknown
+  >
+
+  public _countCache?: ResponseCache<[where: string | null], Promise<number>>
 
   constructor(public readonly options: TableOptions<Type>) {}
 
@@ -28,6 +46,57 @@ export class Table<Type extends object = object> {
 
   get query() {
     return this.db<Type>(this.options.name)
+  }
+
+  get cache() {
+    if (!this._whereCache || !this._countCache) throw new Error("missing cache")
+
+    if (!this.orm) throw new Error("missing ORM")
+
+    return {
+      get: <Return>(
+        id: string,
+        cb: (
+          table: Pick<
+            Table<Type>["query"],
+            | "select"
+            | "count"
+            | "avg"
+            | "sum"
+            | "countDistinct"
+            | "avgDistinct"
+            | "sumDistinct"
+          >,
+        ) => Return,
+      ): Return => {
+        return this._whereCache!.get(id, cb) as Return
+      },
+      set: <Return>(
+        cb: (
+          table: Pick<
+            Table<Type>["query"],
+            | "update"
+            | "delete"
+            | "insert"
+            | "upsert"
+            | "truncate"
+            | "jsonInsert"
+          >,
+        ) => Return,
+      ) => {
+        // todo: invalidate only the related tables
+        this.orm!.cache.invalidate()
+        return cb(this.query)
+      },
+      count: (where?: string) => {
+        return this._countCache!.get(where ?? "*", where ?? null)
+      },
+      invalidate: () => {
+        this._whereCache!.invalidate()
+        this._countCache!.invalidate()
+        this.orm!._rawCache.invalidate()
+      },
+    }
   }
 
   async count(where?: string): Promise<number> {
@@ -56,21 +125,34 @@ export class Table<Type extends object = object> {
   }
 
   async isEmpty(): Promise<boolean> {
-    return this.count().then((count) => count === 0)
+    return this.count().then((count) => +count === 0)
   }
 
   async make(): Promise<this> {
     if (!this.orm) throw new Error("missing ORM")
 
+    this._whereCache = new ResponseCache(
+      (cb: (query: Knex.QueryBuilder<Type>) => unknown) => cb(this.query),
+      this.options.caching ?? this.orm?.config.caching ?? Infinity,
+    )
+
+    this._countCache = new ResponseCache(
+      (where: string | null) => this.count(where ?? undefined),
+      this.options.caching ?? this.orm?.config.caching ?? Infinity,
+    )
+
     try {
       await this.db.schema.createTable(this.options.name, this.options.setup)
 
       this.orm.config.logger?.log(
-        `created table ${chalk[
-          this.orm.config.loggerColors?.highlight ?? "blueBright"
-        ](this.options.name)}${
+        `created table ${util.styleText(
+          this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+          this.options.name,
+        )}${
           this.options.description
-            ? ` ${chalk[this.orm.config.loggerColors?.description ?? "grey"](
+            ? ` ${util.styleText(
+                this.orm.config.loggerStyles?.description ??
+                  DEFAULT_LOGGER_DESCRIPTION,
                 this.options.description,
               )}`
             : ""
@@ -79,19 +161,23 @@ export class Table<Type extends object = object> {
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
         this.orm.config.logger?.error(
-          `you need to implement the "setup" method in options of your ${chalk[
-            this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)} table!`,
+          `you need to implement the "setup" method in options of your ${util.styleText(
+            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+            this.options.name,
+          )} table!`,
         )
 
         throw error
       } else {
         this.orm.config.logger?.log(
-          `loaded table ${chalk[
-            this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)}${
+          `loaded table ${util.styleText(
+            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+            this.options.name,
+          )}${
             this.options.description
-              ? ` ${chalk[this.orm.config.loggerColors?.description ?? "grey"](
+              ? ` ${util.styleText(
+                  this.orm.config.loggerStyles?.description ??
+                    DEFAULT_LOGGER_DESCRIPTION,
                   this.options.description,
                 )}`
               : ""
@@ -105,11 +191,13 @@ export class Table<Type extends object = object> {
 
       if (migrated !== false) {
         this.orm.config.logger?.log(
-          `migrated table ${chalk[
-            this.orm.config.loggerColors?.highlight ?? "blueBright"
-          ](this.options.name)} to version ${chalk[
-            this.orm.config.loggerColors?.rawValue ?? "magentaBright"
-          ](migrated)}`,
+          `migrated table ${util.styleText(
+            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+            this.options.name,
+          )} to version ${util.styleText(
+            this.orm.config.loggerStyles?.rawValue ?? DEFAULT_LOGGER_RAW_VALUE,
+            String(migrated),
+          )}`,
         )
       }
     } catch (error: any) {

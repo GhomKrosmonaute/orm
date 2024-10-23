@@ -9,5 +9,5 @@
     "esModuleInterop": true,
     "typeRoots": ["./node_modules/@types", "./dist/typings"]
   },
-    "include": ["src/**/*", "dist/typings/**/*"],
+  "include": ["src/**/*", "dist/typings/**/*"]
 }

@@ -1,17 +1,15 @@
-import fs from "fs"
 import url from "url"
-import path from "path"
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
+import { isCJS, TextStyle } from "./util.js"
 import { MigrationData, Table } from "./table.js"
-import chalk, { Color } from "chalk"
-
-const defaultBackupDir = path.join(process.cwd(), "backup")
-
-const pack = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
-)
-const isCJS = pack.type === "commonjs" || pack.type == void 0
+import {
+  backupTable,
+  restoreBackup,
+  disableForeignKeys,
+  enableForeignKeys,
+} from "./backup.js"
+import { ResponseCache } from "./caching"
 
 export interface ILogger {
   log: (message: string) => void
@@ -23,7 +21,7 @@ export interface ORMConfig {
   /**
    * path to the directory that contains js files of tables
    */
-  location: string
+  tableLocation: string
 
   /**
    * database configuration
@@ -37,18 +35,36 @@ export interface ORMConfig {
 
   /**
    * Pattern used on logs when the table files are loaded or created. <br>
-   * Based on Chalk color-method names.
+   * Based on node:util.styleText style names.
    */
-  loggerColors?: {
-    highlight: typeof Color
-    rawValue: typeof Color
-    description: typeof Color
+  loggerStyles?: {
+    highlight: TextStyle
+    rawValue: TextStyle
+    description: TextStyle
   }
+
+  /**
+   * Configuration for the database backups.
+   */
+  backups?: {
+    location?: string
+    chunkSize?: number
+  }
+
+  /**
+   * The cache time in milliseconds. <br>
+   * Default is `Infinity`.
+   */
+  caching?: number
 }
 
 export class ORM {
+  private _ready = false
+
   public database: Knex
   public handler: Handler<Table<any>>
+
+  public _rawCache: ResponseCache<[sql: string], Knex.Raw>
 
   constructor(public config: ORMConfig) {
     this.database = knex(
@@ -61,13 +77,18 @@ export class ORM {
       },
     )
 
-    this.handler = new Handler(config.location, {
+    this.handler = new Handler(config.tableLocation, {
       loader: (filepath) =>
         import(isCJS ? filepath : url.pathToFileURL(filepath).href).then(
           (file) => file.default,
         ),
       pattern: /\.js$/,
     })
+
+    this._rawCache = new ResponseCache(
+      (raw: string) => this.raw(raw),
+      config.caching ?? Infinity,
+    )
   }
 
   get cachedTables() {
@@ -79,7 +100,7 @@ export class ORM {
   }
 
   hasCachedTable(name: string) {
-    return this.cachedTables.some((table) => table.options.name)
+    return this.cachedTables.some((table) => table.options.name === name)
   }
 
   async hasTable(name: string): Promise<boolean> {
@@ -92,21 +113,19 @@ export class ORM {
   async init() {
     await this.handler.init()
 
-    try {
-      await this.database.raw("PRAGMA foreign_keys = ON;")
-    } catch (error) {}
+    await enableForeignKeys(this)
 
-    const migration = new Table<MigrationData>({
-      name: "migration",
-      priority: Infinity,
-      setup: (table) => {
-        table.string("table").unique().notNullable()
-        table.integer("version").notNullable()
-      },
-    })
-
-    migration.orm = this
-    await migration.make()
+    this.handler.elements.set(
+      "migration",
+      new Table<MigrationData>({
+        name: "migration",
+        priority: Infinity,
+        setup: (table) => {
+          table.string("table").unique().notNullable()
+          table.integer("version").notNullable()
+        },
+      }),
+    )
 
     for (const table of this.cachedTables.sort(
       (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
@@ -114,82 +133,59 @@ export class ORM {
       table.orm = this
       await table.make()
     }
+
+    this._ready = true
   }
 
   raw(sql: Knex.Value): Knex.Raw {
+    if (this._ready) this.cache.invalidate()
     return this.database.raw(sql)
   }
 
-  // /**
-  //  * Extract the database to a CSV file for each table.
-  //  */
-  // async createBackup(dir = defaultBackupDir) {
-  //   const tables = [...this.handler.elements.values()]
-  //
-  //   for (const table of tables) {
-  //     await this.database
-  //       .select()
-  //       .from(table.options.name)
-  //       .then(async (rows) => {
-  //         const csv = rows.map((row) => Object.values(row).join(",")).join("\n")
-  //
-  //         return fs.promises.writeFile(
-  //           path.join(dir, `${table.options.name}.csv`),
-  //           csv,
-  //           "utf8",
-  //         )
-  //       })
-  //   }
-  // }
-  //
-  // /**
-  //  * Import a CSV file for each table to the database.
-  //  */
-  // async restoreBackup(dir = defaultBackupDir) {
-  //   const tables = [...this.handler.elements.values()].sort(
-  //     (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
-  //   )
-  //
-  //   for (const table of tables) {
-  //     const columnInfo = await table.getColumns()
-  //
-  //     let csv: string
-  //
-  //     try {
-  //       csv = await fs.promises.readFile(
-  //         path.join(dir, `${table.options.name}.csv`),
-  //         "utf8",
-  //       )
-  //     } catch (error) {
-  //       this.config.logger?.warn(
-  //         `missing backup file for table ${chalk[
-  //           this.config.loggerColors?.highlight ?? "blueBright"
-  //         ](table.options.name)}`,
-  //       )
-  //
-  //       continue
-  //     }
-  //
-  //     if (csv.trim().length === 0) continue
-  //
-  //     const rows = csv
-  //       .split("\n")
-  //       .map((row) => row.split(","))
-  //       .map((row) => {
-  //         const data: any = {}
-  //
-  //         let index = 0
-  //
-  //         for (const [name, info] of Object.entries(columnInfo)) {
-  //           data[name] =
-  //             info.type === "integer" ? Number(row[index]) : row[index]
-  //           index++
-  //         }
-  //
-  //         return data
-  //       })
-  //
-  //     await this.database(table.options.name).insert(rows)
-  //   }
-  // }
+  cache = {
+    raw: (sql: string, anyDataUpdated?: boolean): Knex.Raw => {
+      if (anyDataUpdated) this.cache.invalidate()
+      return this._rawCache!.get(sql, sql)
+    },
+    invalidate: () => {
+      this._rawCache.invalidate()
+      this.cachedTables.forEach((table) => table.cache.invalidate())
+    },
+  }
+
+  /**
+   * Create a backup of the database. <br>
+   * The backup will be saved in the location specified in the config.
+   */
+  async createBackup(dirname?: string) {
+    try {
+      for (let table of this.cachedTables) {
+        await backupTable(table, dirname)
+      }
+
+      console.log("Database backup created.")
+    } catch (error) {
+      console.error("Error while creating backup of the database.", error)
+    }
+  }
+
+  /**
+   * Restore the database from the backup. <br>
+   * @warning This will delete all the data in the tables.
+   */
+  async restoreBackup(dirname?: string) {
+    try {
+      await disableForeignKeys(this)
+
+      for (let table of this.cachedTables) {
+        await restoreBackup(table, dirname)
+      }
+
+      await enableForeignKeys(this)
+
+      console.log("Database restored from backup.")
+    } catch (error) {
+      console.error("Error while restoring backup of the database.", error)
+    }
+  }
 }

@@ -1,5 +1,8 @@
 import { Table } from "../.."
 
+/**
+ * @type {Table<{ id: number }>}
+ */
 export default new Table({
   name: "c",
   priority: 2,

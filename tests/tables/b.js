@@ -1,5 +1,8 @@
 import { Table } from "../.."
 
+/**
+ * @type {Table<{ id: number; c_id: number }>}
+ */
 export default new Table({
   name: "b",
   migrations: {
@@ -9,7 +12,7 @@ export default new Table({
         .references("id")
         .inTable("c")
         .onDelete("cascade")
-        .notNullable()
+        .notNullable(),
   },
   priority: 1,
   setup(table) {
