@@ -3,6 +3,7 @@ import path from "path"
 import util from "util"
 import csv from "json-2-csv"
 import csvParser from "csv-parser"
+import { Knex } from "knex"
 import { ORM } from "./orm.js"
 import { Table } from "./table.js"
 import {
@@ -109,7 +110,11 @@ export async function backupTable(table: Table, dirname?: string) {
   }
 }
 
-export async function restoreBackup(table: Table, dirname?: string) {
+export async function restoreBackup(
+  table: Table,
+  trx: Knex.Transaction | Knex,
+  dirname?: string,
+) {
   if (!table.orm) throw new Error("missing ORM")
 
   const chunkDir = path.join(
@@ -121,7 +126,7 @@ export async function restoreBackup(table: Table, dirname?: string) {
     .readdirSync(chunkDir)
     .filter((file) => file.split("_chunk_")[0] === table.options.name)
 
-  await table.query.truncate()
+  await trx(table.options.name).del()
 
   try {
     const limit = 1000 // Limite par requête
@@ -140,12 +145,12 @@ export async function restoreBackup(table: Table, dirname?: string) {
             if (rows.length > limit) {
               const rowsCopy = rows.slice()
               rows = []
-              await table.query.insert(rowsCopy)
+              await trx(table.options.name).insert(rowsCopy)
             }
           })
           .on("end", async () => {
             // Insérer les données dans la table une fois le fichier entièrement lu
-            if (rows.length > 0) await table.query.insert(rows)
+            if (rows.length > 0) await trx(table.options.name).insert(rows)
 
             console.log(
               `Restored chunk ${util.styleText(
@@ -182,34 +187,68 @@ export async function restoreBackup(table: Table, dirname?: string) {
   )
 }
 
-export async function enableForeignKeys(orm: ORM) {
-  const result = await Promise.allSettled([
-    orm.raw("SET session_replication_role = DEFAULT;"), // for pg
-    orm.raw("PRAGMA foreign_keys = ON;"), // for sqlite3
-    orm.raw("SET FOREIGN_KEY_CHECKS = 1;"), // for mysql2
-  ])
+export async function enableForeignKeys(
+  orm: ORM,
+  trx?: Knex.Transaction | Knex,
+) {
+  const ctx = trx ?? orm
 
-  const errors = result.filter((r) => r.status === "rejected")
+  await orm.clientBasedOperation({
+    mysql2: () => ctx.raw("SET FOREIGN_KEY_CHECKS = 1;"),
+    sqlite3: () => ctx.raw("PRAGMA foreign_keys = 1;"),
+    pg: () => ctx.raw("SET session_replication_role = DEFAULT;"),
+  })
 
-  if (errors.length === 3) {
-    throw new Error(
-      `Failed to enable foreign key constraints:\n${util.inspect(errors)}`,
-    )
-  }
+  console.log("Foreign key constraints enabled.")
 }
 
-export async function disableForeignKeys(orm: ORM) {
-  const result = await Promise.allSettled([
-    orm.raw("SET session_replication_role = replica;"), // for pg
-    orm.raw("PRAGMA foreign_keys = OFF;"), // for sqlite3
-    orm.raw("SET FOREIGN_KEY_CHECKS = 0;"), // for mysql2
-  ])
+export async function disableForeignKeys(
+  orm: ORM,
+  run: (trx: Knex.Transaction | Knex) => unknown,
+) {
+  const trx =
+    orm.clientBasedOperation({
+      sqlite3: () => orm.database,
+    }) ?? (await orm.database.transaction())
 
-  const errors = result.filter((r) => r.status === "rejected")
+  const ran = await orm.clientBasedOperation<Promise<boolean>>({
+    mysql2: async () => {
+      const result = await trx.raw("SELECT @@FOREIGN_KEY_CHECKS;")
+      const check = result?.[0] && result[0]["@@FOREIGN_KEY_CHECKS"] != 0
 
-  if (errors.length === 3) {
-    throw new Error(
-      `Failed to disable foreign key constraints:\n${util.inspect(errors)}`,
-    )
+      if (check) await trx.raw("SET FOREIGN_KEY_CHECKS = 0;")
+
+      return check
+    },
+    sqlite3: async () => {
+      const result = await trx.raw("PRAGMA foreign_keys;")
+      const check = result?.[0] && result[0].foreign_keys != 0
+
+      if (check) await trx.raw("PRAGMA foreign_keys = 0;")
+
+      return check
+    },
+    pg: async () => {
+      const result = await trx.raw("SHOW session_replication_role;")
+      const check =
+        result?.rows?.[0] &&
+        result.rows[0].session_replication_role !== "replica"
+
+      if (check) await trx.raw("SET session_replication_role = replica;")
+
+      return check
+    },
+  })
+
+  console.log(`Foreign key constraints ${ran ? "" : "already "}disabled.`)
+
+  try {
+    await run(trx)
+    await enableForeignKeys(orm, trx)
+
+    if (trx.isTransaction) await (trx as Knex.Transaction).commit()
+  } catch (error) {
+    if (trx.isTransaction) await (trx as Knex.Transaction).rollback()
+    throw error
   }
 }

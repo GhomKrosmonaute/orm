@@ -1,6 +1,10 @@
-# TypeScript KnexJS ORM & handler
+# @ghom/orm
+
+### TypeScript Knex ORM & table handler including a backup system and a cache.
 
 ![test workflow badge](https://github.com/GhomKrosmonaute/orm/actions/workflows/test.yml/badge.svg)
+
+> Compatible with [PostgreSQL](https://www.npmjs.com/package/pg), [MySQL](https://www.npmjs.com/package/mysql2), and [SQLite](https://www.npmjs.com/package/sqlite3).
 
 ## Install
 

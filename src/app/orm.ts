@@ -129,9 +129,11 @@ export class ORM {
       }),
     )
 
-    for (const table of this.cachedTables.sort(
+    const sortedTables = this.cachedTables.toSorted(
       (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
-    )) {
+    )
+
+    for (const table of sortedTables) {
       table.orm = this
       await table.make()
     }
@@ -155,6 +157,16 @@ export class ORM {
     },
   }
 
+  clientBasedOperation<Return>(
+    operation: Partial<Record<"pg" | "mysql2" | "sqlite3", () => Return>>,
+  ): Return | undefined {
+    const client = (this.config.database?.client ?? "sqlite3") as
+      | "pg"
+      | "mysql2"
+      | "sqlite3"
+    return operation[client]?.()
+  }
+
   /**
    * Create a backup of the database. <br>
    * The backup will be saved in the location specified in the config.
@@ -172,13 +184,11 @@ export class ORM {
    * @warning This will delete all the data in the tables.
    */
   async restoreBackup(dirname?: string) {
-    await disableForeignKeys(this)
-
-    for (let table of this.cachedTables) {
-      await restoreBackup(table, dirname)
-    }
-
-    await enableForeignKeys(this)
+    await disableForeignKeys(this, async (trx) => {
+      for (let table of this.cachedTables) {
+        await restoreBackup(table, trx, dirname)
+      }
+    })
 
     console.log("Database restored from backup.")
   }

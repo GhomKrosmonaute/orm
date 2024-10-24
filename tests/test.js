@@ -3,7 +3,12 @@ import { rimraf } from "rimraf"
 import path from "path"
 import fs from "fs"
 
-dotenv.config({ path: "./.env" })
+dotenv.config({
+  path: path.join(process.cwd(), "tests", ".pg.env"),
+  // path: path.join(process.cwd(), "tests", ".mysql2.env"),
+})
+
+process.env.DEBUG = "knex*"
 
 import { ORM } from "../"
 
@@ -41,22 +46,14 @@ describe("table management", () => {
     expect(orm.hasCachedTable("c")).toBeTruthy()
   })
 
-  test("migrations ran", async () => {
+  test("table migrations ran", async () => {
     expect(await b.hasColumn("c_id")).toBeTruthy()
   })
 
-  test("then ran", async () => {
+  test("table then ran", async () => {
     const rows = await a.query.select()
 
     expect(rows.length).toBe(1)
-  })
-
-  test("cascade delete", async () => {
-    expect(await a.isEmpty()).toBeFalsy()
-
-    await c.query.del()
-
-    expect(await a.isEmpty()).toBeTruthy()
   })
 })
 
@@ -81,19 +78,7 @@ describe("table column types", () => {
 })
 
 describe("database extraction", () => {
-  beforeAll(async () => {
-    await c.query.insert({ id: 0 })
-    await b.query.insert({
-      id: 0,
-      c_id: 0,
-    })
-    await a.query.insert({
-      id: 0,
-      b_id: 0,
-    })
-  })
-
-  test("extract CSV", async () => {
+  test("create backup", async () => {
     await orm.createBackup()
 
     expect(
@@ -107,22 +92,24 @@ describe("database extraction", () => {
     ).toBeTruthy()
   })
 
-  test("empty tables", async () => {
-    await a.query.del()
-    await b.query.del()
+  test("cascade delete", async () => {
+    expect(await a.isEmpty()).toBeFalsy()
+
     await c.query.del()
 
     expect(await a.isEmpty()).toBeTruthy()
-    expect(await b.isEmpty()).toBeTruthy()
-    expect(await c.isEmpty()).toBeTruthy()
   })
 
-  test("import CSV", async () => {
+  test("restore backup", async () => {
     await orm.restoreBackup()
 
     expect(await a.isEmpty()).toBeFalsy()
     expect(await b.isEmpty()).toBeFalsy()
     expect(await c.isEmpty()).toBeFalsy()
+  }, 10_000)
+
+  afterAll(async () => {
+    await rimraf(orm.config.backups.location)
   })
 })
 
@@ -210,6 +197,9 @@ describe("data caching", () => {
 })
 
 afterAll(async () => {
+  await orm.database.schema.dropTable("migration")
+  await orm.database.schema.dropTable("a")
+  await orm.database.schema.dropTable("b")
+  await orm.database.schema.dropTable("c")
   await orm.database.destroy()
-  await rimraf(orm.config.backups.location)
 })

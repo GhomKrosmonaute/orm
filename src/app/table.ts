@@ -103,7 +103,10 @@ export class Table<Type extends object = object> {
     return this.query
       .select(this.db.raw("count(*) as total"))
       .whereRaw(where ?? "1=1")
-      .then((rows) => (rows[0] as unknown as { total: number }).total)
+      .then(
+        (rows) =>
+          +((rows?.[0] ?? { total: 0 }) as unknown as { total: number }).total,
+      )
   }
 
   async hasColumn(name: keyof Type & string): Promise<boolean> {
@@ -125,7 +128,7 @@ export class Table<Type extends object = object> {
   }
 
   async isEmpty(): Promise<boolean> {
-    return this.count().then((count) => +count === 0)
+    return this.count().then((count) => count === 0)
   }
 
   async make(): Promise<this> {
