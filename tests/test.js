@@ -16,6 +16,10 @@ const orm = new ORM({
   backups: {
     location: path.join(process.cwd(), "backups"),
   },
+  database: process.env.DB_CLIENT && {
+    client: process.env.DB_CLIENT,
+    connection: process.env.DB_CONNECTION,
+  },
 })
 
 beforeAll(async () => {

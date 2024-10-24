@@ -160,15 +160,11 @@ export class ORM {
    * The backup will be saved in the location specified in the config.
    */
   async createBackup(dirname?: string) {
-    try {
-      for (let table of this.cachedTables) {
-        await backupTable(table, dirname)
-      }
-
-      console.log("Database backup created.")
-    } catch (error) {
-      console.error("Error while creating backup of the database.", error)
+    for (let table of this.cachedTables) {
+      await backupTable(table, dirname)
     }
+
+    console.log("Database backup created.")
   }
 
   /**
@@ -176,18 +172,14 @@ export class ORM {
    * @warning This will delete all the data in the tables.
    */
   async restoreBackup(dirname?: string) {
-    try {
-      await disableForeignKeys(this)
+    await disableForeignKeys(this)
 
-      for (let table of this.cachedTables) {
-        await restoreBackup(table, dirname)
-      }
-
-      await enableForeignKeys(this)
-
-      console.log("Database restored from backup.")
-    } catch (error) {
-      console.error("Error while restoring backup of the database.", error)
+    for (let table of this.cachedTables) {
+      await restoreBackup(table, dirname)
     }
+
+    await enableForeignKeys(this)
+
+    console.log("Database restored from backup.")
   }
 }

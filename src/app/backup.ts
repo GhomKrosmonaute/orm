@@ -182,20 +182,6 @@ export async function restoreBackup(table: Table, dirname?: string) {
   )
 }
 
-export async function disableForeignKeys(orm: ORM) {
-  const result = await Promise.allSettled([
-    orm.raw("SET session_replication_role = replica;"), // for pg
-    orm.raw("PRAGMA foreign_keys = OFF;"), // for sqlite3
-    orm.raw("SET FOREIGN_KEY_CHECKS = 0;"), // for mysql2
-  ])
-
-  const errors = result.filter((r) => r.status === "rejected")
-
-  if (errors.length === 3) {
-    throw new Error("Failed to disable foreign key constraints.")
-  }
-}
-
 export async function enableForeignKeys(orm: ORM) {
   const result = await Promise.allSettled([
     orm.raw("SET session_replication_role = DEFAULT;"), // for pg
@@ -206,6 +192,24 @@ export async function enableForeignKeys(orm: ORM) {
   const errors = result.filter((r) => r.status === "rejected")
 
   if (errors.length === 3) {
-    throw new Error("Failed to enable foreign key constraints.")
+    throw new Error(
+      `Failed to enable foreign key constraints:\n${util.inspect(errors)}`,
+    )
+  }
+}
+
+export async function disableForeignKeys(orm: ORM) {
+  const result = await Promise.allSettled([
+    orm.raw("SET session_replication_role = replica;"), // for pg
+    orm.raw("PRAGMA foreign_keys = OFF;"), // for sqlite3
+    orm.raw("SET FOREIGN_KEY_CHECKS = 0;"), // for mysql2
+  ])
+
+  const errors = result.filter((r) => r.status === "rejected")
+
+  if (errors.length === 3) {
+    throw new Error(
+      `Failed to disable foreign key constraints:\n${util.inspect(errors)}`,
+    )
   }
 }
