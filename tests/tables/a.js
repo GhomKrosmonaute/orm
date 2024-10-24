@@ -10,6 +10,7 @@ export default new Table({
     table.increments("id").primary().notNullable()
     table
       .integer("b_id")
+      .unsigned()
       .references("id")
       .inTable("b")
       .onDelete("cascade")
@@ -17,8 +18,8 @@ export default new Table({
   },
   async then({ query }) {
     await query.insert({
-      id: 0,
-      b_id: 0,
+      id: 1,
+      b_id: 1,
     })
   },
 })

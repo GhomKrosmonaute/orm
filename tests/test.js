@@ -4,7 +4,7 @@ import path from "path"
 import fs from "fs"
 
 dotenv.config({
-  path: path.join(process.cwd(), "tests", ".pg.env"),
+  // path: path.join(process.cwd(), "tests", ".pg.env"),
   // path: path.join(process.cwd(), "tests", ".mysql2.env"),
 })
 
@@ -64,7 +64,7 @@ describe("table column types", () => {
         .database("a")
         .columnInfo("id")
         .then((info) => info.type),
-    ).toBe("integer")
+    ).toMatch(/^int/)
   })
 
   test("integer", async () => {
@@ -73,7 +73,7 @@ describe("table column types", () => {
         .database("a")
         .columnInfo("b_id")
         .then((info) => info.type),
-    ).toBe("integer")
+    ).toMatch(/^int/)
   })
 })
 

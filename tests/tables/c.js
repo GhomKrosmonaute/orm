@@ -10,6 +10,8 @@ export default new Table({
     table.increments("id").primary().notNullable()
   },
   async then({ query }) {
-    await query.insert({ id: 0 })
+    await query.insert({
+      id: 1,
+    })
   },
 })
