@@ -36,6 +36,20 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+      mysql:
+        image: mysql:5.7
+
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test
+
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 3306:3306
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -54,11 +68,17 @@ jobs:
       - name: Build the source
         run: npm run build
 
-      - name: Start the tests on sqlite3
+      - name: Start the tests on SQLite
         run: npm run test
 
-      - name: Start the tests on postgres
+      - name: Start the tests on PostgreSQL
         run: npm run test
         env:
           DB_CLIENT: pg
           DB_CONNECTION: postgres://postgres:postgres@localhost:5432/postgres
+
+      - name: Start the tests on MySQL
+        run: npm run test
+        env:
+          DB_CLIENT: mysql2
+          DB_CONNECTION: mysql://root:root@localhost:3306/test
