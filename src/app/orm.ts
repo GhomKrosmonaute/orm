@@ -113,7 +113,9 @@ export class ORM {
   async init() {
     await this.handler.init()
 
-    await enableForeignKeys(this)
+    try {
+      await enableForeignKeys(this)
+    } catch {}
 
     this.handler.elements.set(
       "migration",
