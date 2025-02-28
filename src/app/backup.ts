@@ -198,8 +198,6 @@ export async function enableForeignKeys(
     sqlite3: () => ctx.raw("PRAGMA foreign_keys = 1;"),
     pg: () => ctx.raw("SET session_replication_role = DEFAULT;"),
   })
-
-  console.log("Foreign key constraints enabled.")
 }
 
 export async function disableForeignKeys(
@@ -239,8 +237,6 @@ export async function disableForeignKeys(
       return check
     },
   })
-
-  console.log(`Foreign key constraints ${ran ? "" : "already "}disabled.`)
 
   try {
     await run(trx)

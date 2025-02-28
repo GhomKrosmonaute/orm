@@ -131,8 +131,8 @@ export class Table<Type extends object = object> {
     return this.count().then((count) => count === 0)
   }
 
-  async make(): Promise<this> {
-    if (!this.orm) throw new Error("missing ORM")
+  async make(orm: ORM): Promise<this> {
+    this.orm = orm
 
     this._whereCache = new ResponseCache(
       (cb: (query: Knex.QueryBuilder<Type>) => unknown) => cb(this.query),

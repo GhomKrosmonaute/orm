@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "1.8.6",
+  "version": "1.8.7",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

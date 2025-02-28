@@ -134,8 +134,7 @@ export class ORM {
     )
 
     for (const table of sortedTables) {
-      table.orm = this
-      await table.make()
+      await table.make(this)
     }
 
     this._ready = true
