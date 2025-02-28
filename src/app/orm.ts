@@ -61,10 +61,10 @@ export interface ORMConfig {
 export class ORM {
   private _ready = false
 
-  public database: Knex
-  public handler: Handler<Table<any>>
+  public database
+  public handler
 
-  public _rawCache: ResponseCache<[sql: string], Knex.Raw>
+  public _rawCache
 
   constructor(public config: ORMConfig) {
     this.database = knex(
@@ -77,12 +77,15 @@ export class ORM {
       },
     )
 
-    this.handler = new Handler(config.tableLocation, {
-      loader: (filepath) =>
-        import(isCJS ? filepath : url.pathToFileURL(filepath).href).then(
-          (file) => file.default,
-        ),
-      pattern: /\.js$/,
+    this.handler = new Handler<Table<any>>(config.tableLocation, {
+      pattern: /\.[jt]s$/,
+      loader: async (filepath) => {
+        const file = await import(
+          isCJS ? filepath : url.pathToFileURL(filepath).href
+        )
+        if (file.default instanceof Table) return file.default
+        throw new Error(`${filepath}: default export must be a Table instance`)
+      },
     })
 
     this._rawCache = new ResponseCache(

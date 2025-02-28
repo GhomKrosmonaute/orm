@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -31,7 +31,7 @@
     "sqlite3": "^5.1.6"
   },
   "dependencies": {
-    "@ghom/handler": "^2.0.0",
+    "@ghom/handler": "^3.1.0",
     "csv-parser": "^3.0.0",
     "json-2-csv": "^5.5.6",
     "knex": "^3.0.1"
