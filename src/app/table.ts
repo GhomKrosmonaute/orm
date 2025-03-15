@@ -1,12 +1,7 @@
-import util from "util"
 import { Knex } from "knex"
 import { ORM } from "./orm.js"
+import { styled } from "./util.js"
 import { ResponseCache } from "./caching.js"
-import {
-  DEFAULT_LOGGER_DESCRIPTION,
-  DEFAULT_LOGGER_HIGHLIGHT,
-  DEFAULT_LOGGER_RAW_VALUE,
-} from "./util.js"
 
 export interface MigrationData {
   table: string
@@ -41,7 +36,7 @@ export class Table<Type extends object = object> {
 
   get db() {
     if (!this.orm) throw new Error("missing ORM")
-    return this.orm.database
+    return this.orm.client
   }
 
   get query() {
@@ -144,48 +139,25 @@ export class Table<Type extends object = object> {
       this.options.caching ?? this.orm?.config.caching ?? Infinity,
     )
 
+    const tableNameLog = `table ${styled(this.orm, this.options.name, "highlight")}${
+      this.options.description
+        ? ` ${styled(this.orm, this.options.description, "description")}`
+        : ""
+    }`
+
     try {
       await this.db.schema.createTable(this.options.name, this.options.setup)
 
-      this.orm.config.logger?.log(
-        `created table ${util.styleText(
-          this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-          this.options.name,
-        )}${
-          this.options.description
-            ? ` ${util.styleText(
-                this.orm.config.loggerStyles?.description ??
-                  DEFAULT_LOGGER_DESCRIPTION,
-                this.options.description,
-              )}`
-            : ""
-        }`,
-      )
+      this.orm.config.logger?.log(`created table ${tableNameLog}`)
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
         this.orm.config.logger?.error(
-          `you need to implement the "setup" method in options of your ${util.styleText(
-            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-            this.options.name,
-          )} table!`,
+          `you need to implement the "setup" method in options of your ${styled(this.orm, this.options.name, "highlight")} table!`,
         )
 
         throw error
       } else {
-        this.orm.config.logger?.log(
-          `loaded table ${util.styleText(
-            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-            this.options.name,
-          )}${
-            this.options.description
-              ? ` ${util.styleText(
-                  this.orm.config.loggerStyles?.description ??
-                    DEFAULT_LOGGER_DESCRIPTION,
-                  this.options.description,
-                )}`
-              : ""
-          }`,
-        )
+        this.orm.config.logger?.log(`loaded table ${tableNameLog}`)
       }
     }
 
@@ -194,13 +166,7 @@ export class Table<Type extends object = object> {
 
       if (migrated !== false) {
         this.orm.config.logger?.log(
-          `migrated table ${util.styleText(
-            this.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-            this.options.name,
-          )} to version ${util.styleText(
-            this.orm.config.loggerStyles?.rawValue ?? DEFAULT_LOGGER_RAW_VALUE,
-            String(migrated),
-          )}`,
+          `migrated table ${styled(this.orm, this.options.name, "highlight")} to version ${styled(this.orm, migrated, "rawValue")}`,
         )
       }
     } catch (error: any) {

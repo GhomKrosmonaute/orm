@@ -1,4 +1,4 @@
-import url from "url"
+import url from "node:url"
 import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { isCJS, TextStyle } from "./util.js"
@@ -15,6 +15,12 @@ export interface ILogger {
   log: (message: string) => void
   error: (error: string | Error) => void
   warn: (warning: string) => void
+}
+
+export interface LoggerStyles {
+  highlight: TextStyle
+  rawValue: TextStyle
+  description: TextStyle
 }
 
 export interface ORMConfig {
@@ -37,11 +43,7 @@ export interface ORMConfig {
    * Pattern used on logs when the table files are loaded or created. <br>
    * Based on node:util.styleText style names.
    */
-  loggerStyles?: {
-    highlight: TextStyle
-    rawValue: TextStyle
-    description: TextStyle
-  }
+  loggerStyles?: LoggerStyles
 
   /**
    * Configuration for the database backups.
@@ -61,13 +63,13 @@ export interface ORMConfig {
 export class ORM {
   private _ready = false
 
-  public database
+  public client
   public handler
 
   public _rawCache
 
   constructor(public config: ORMConfig) {
-    this.database = knex(
+    this.client = knex(
       config.database ?? {
         client: "sqlite3",
         useNullAsDefault: true,
@@ -107,7 +109,7 @@ export class ORM {
   }
 
   async hasTable(name: string): Promise<boolean> {
-    return this.database.schema.hasTable(name)
+    return this.client.schema.hasTable(name)
   }
 
   /**
@@ -145,7 +147,7 @@ export class ORM {
 
   raw(sql: Knex.Value): Knex.Raw {
     if (this._ready) this.cache.invalidate()
-    return this.database.raw(sql)
+    return this.client.raw(sql)
   }
 
   cache = {

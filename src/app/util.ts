@@ -1,7 +1,8 @@
-import util from "util"
-import path from "path"
-import fs from "fs"
-import { ORM } from "./orm.js"
+import util from "node:util"
+import path from "node:path"
+import fs from "node:fs"
+
+import type { LoggerStyles, ORM, ORMConfig } from "./orm.js"
 
 export type TextStyle = Parameters<typeof util.styleText>[0]
 
@@ -29,3 +30,19 @@ try {
 }
 
 export { isCJS }
+
+export function styled(
+  orm: ORM,
+  message: string | boolean | number,
+  style: keyof LoggerStyles,
+) {
+  return util.styleText(
+    orm.config.loggerStyles?.[style] ??
+      (style === "highlight"
+        ? DEFAULT_LOGGER_HIGHLIGHT
+        : style === "rawValue"
+          ? DEFAULT_LOGGER_RAW_VALUE
+          : DEFAULT_LOGGER_DESCRIPTION),
+    String(message),
+  )
+}

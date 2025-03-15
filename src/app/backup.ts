@@ -1,6 +1,5 @@
-import fs from "fs"
-import path from "path"
-import util from "util"
+import fs from "node:fs"
+import path from "node:path"
 import csv from "json-2-csv"
 import csvParser from "csv-parser"
 import { Knex } from "knex"
@@ -9,14 +8,14 @@ import { Table } from "./table.js"
 import {
   DEFAULT_BACKUP_CHUNK_SIZE,
   DEFAULT_BACKUP_LOCATION,
-  DEFAULT_LOGGER_HIGHLIGHT,
-  DEFAULT_LOGGER_RAW_VALUE,
+  styled,
 } from "./util.js"
 
 export async function backupTable(table: Table, dirname?: string) {
   if (!table.orm) throw new Error("missing ORM")
 
   let offset = 0
+  let processedRows = 0
   let chunkIndex = 0
 
   const chunkDir = path.join(
@@ -28,10 +27,7 @@ export async function backupTable(table: Table, dirname?: string) {
     fs.mkdirSync(chunkDir, { recursive: true })
 
     console.log(
-      `Backup directory ${util.styleText(
-        table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-        path.relative(process.cwd(), chunkDir),
-      )} created.`,
+      `Backup directory ${styled(table.orm, path.relative(process.cwd(), chunkDir), "highlight")} created.`,
     )
   }
 
@@ -39,7 +35,6 @@ export async function backupTable(table: Table, dirname?: string) {
     // Compter le nombre total d'enregistrements dans la table
     const rowCount = await table.count()
     const limit = 1000 // Limite par requête
-    const chunkCount = Math.ceil(rowCount / limit)
 
     let writeStream: fs.WriteStream | null = null
     const closePromises = [] // Tableau pour stocker les promesses de fermeture
@@ -73,16 +68,18 @@ export async function backupTable(table: Table, dirname?: string) {
 
       // Écrire les données dans le stream
       writeStream.write(csvData)
+      processedRows += rows.length
       offset += limit
 
+      // Calcul du pourcentage basé sur le nombre de lignes traitées
+      const percentage = Math.round((processedRows / rowCount) * 100)
+
       process.stdout.write(
-        `\rBacking up table ${util.styleText(
-          table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+        `\rBacking up table ${styled(
+          table.orm,
           table.options.name,
-        )}: ${util.styleText(
-          table.orm.config.loggerStyles?.rawValue ?? DEFAULT_LOGGER_RAW_VALUE,
-          String(Math.round((chunkIndex / chunkCount) * 100)),
-        )}%`,
+          "highlight",
+        )}: ${styled(table.orm, String(percentage), "rawValue")}%`,
       )
     }
 
@@ -94,16 +91,18 @@ export async function backupTable(table: Table, dirname?: string) {
     await Promise.all(closePromises)
 
     console.log(
-      `\nBackup of table ${util.styleText(
-        table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+      `\nBackup of table ${styled(
+        table.orm,
         table.options.name,
+        "highlight",
       )} completed.`,
     )
   } catch (error) {
     console.error(
-      `\nError while backing up table ${util.styleText(
-        table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+      `\nError while backing up table ${styled(
+        table.orm,
         table.options.name,
+        "highlight",
       )}:`,
       error,
     )
@@ -130,17 +129,22 @@ export async function restoreBackup(
 
   try {
     const limit = 1000 // Limite par requête
+    const totalChunks = chunkFiles.length
+    let processedChunks = 0
+    let totalRowsRestored = 0
 
     for (let chunkFile of chunkFiles) {
       const filePath = path.join(chunkDir, chunkFile)
 
       let rows: any[] = []
+      let chunkRowsCount = 0
 
       await new Promise<void>((resolve, reject) => {
         fs.createReadStream(filePath)
           .pipe(csvParser())
           .on("data", async (row) => {
             rows.push(row)
+            chunkRowsCount++
 
             if (rows.length > limit) {
               const rowsCopy = rows.slice()
@@ -152,16 +156,16 @@ export async function restoreBackup(
             // Insérer les données dans la table une fois le fichier entièrement lu
             if (rows.length > 0) await trx(table.options.name).insert(rows)
 
-            console.log(
-              `Restored chunk ${util.styleText(
-                table.orm!.config.loggerStyles?.highlight ??
-                  DEFAULT_LOGGER_HIGHLIGHT,
-                chunkFile,
-              )} into table ${util.styleText(
-                table.orm!.config.loggerStyles?.highlight ??
-                  DEFAULT_LOGGER_HIGHLIGHT,
+            processedChunks++
+            totalRowsRestored += chunkRowsCount
+            const percentage = Math.round((processedChunks / totalChunks) * 100)
+
+            process.stdout.write(
+              `\rRestoring table ${styled(
+                table.orm!,
                 table.options.name,
-              )}.`,
+                "highlight",
+              )}: ${styled(table.orm!, String(percentage), "rawValue")}%`,
             )
 
             resolve()
@@ -169,22 +173,28 @@ export async function restoreBackup(
           .on("error", reject)
       })
     }
+
+    console.log(
+      `\nBackup of table ${styled(
+        table.orm,
+        table.options.name,
+        "highlight",
+      )} restored. Total rows: ${styled(
+        table.orm,
+        String(totalRowsRestored),
+        "rawValue",
+      )}`,
+    )
   } catch (error) {
     console.error(
-      `Error while restoring backup of table ${util.styleText(
-        table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
+      `\nError while restoring backup of table ${styled(
+        table.orm,
         table.options.name,
+        "highlight",
       )}:`,
       error,
     )
   }
-
-  console.log(
-    `Backup of table ${util.styleText(
-      table.orm.config.loggerStyles?.highlight ?? DEFAULT_LOGGER_HIGHLIGHT,
-      table.options.name,
-    )} restored.`,
-  )
 }
 
 export async function enableForeignKeys(
@@ -206,8 +216,8 @@ export async function disableForeignKeys(
 ) {
   const trx =
     orm.clientBasedOperation({
-      sqlite3: () => orm.database,
-    }) ?? (await orm.database.transaction())
+      sqlite3: () => orm.client,
+    }) ?? (await orm.client.transaction())
 
   const ran = await orm.clientBasedOperation<Promise<boolean>>({
     mysql2: async () => {

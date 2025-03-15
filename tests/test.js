@@ -61,7 +61,7 @@ describe("table column types", () => {
   test("increments", async () => {
     expect(
       await orm
-        .database("a")
+        .client("a")
         .columnInfo("id")
         .then((info) => info.type),
     ).toMatch(/^int/)
@@ -70,7 +70,7 @@ describe("table column types", () => {
   test("integer", async () => {
     expect(
       await orm
-        .database("a")
+        .client("a")
         .columnInfo("b_id")
         .then((info) => info.type),
     ).toMatch(/^int/)
@@ -197,9 +197,9 @@ describe("data caching", () => {
 })
 
 afterAll(async () => {
-  await orm.database.schema.dropTable("migration")
-  await orm.database.schema.dropTable("a")
-  await orm.database.schema.dropTable("b")
-  await orm.database.schema.dropTable("c")
-  await orm.database.destroy()
+  await orm.client.schema.dropTable("migration")
+  await orm.client.schema.dropTable("a")
+  await orm.client.schema.dropTable("b")
+  await orm.client.schema.dropTable("c")
+  await orm.client.destroy()
 })
