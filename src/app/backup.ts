@@ -205,7 +205,7 @@ export async function enableForeignKeys(
 
   await orm.clientBasedOperation({
     mysql2: () => ctx.raw("SET FOREIGN_KEY_CHECKS = 1;"),
-    sqlite3: () => ctx.raw("PRAGMA foreign_keys = 1;"),
+    pglite: () => ctx.raw("PRAGMA foreign_keys = 1;"),
     pg: () => ctx.raw("SET session_replication_role = DEFAULT;"),
   })
 }
@@ -216,7 +216,7 @@ export async function disableForeignKeys(
 ) {
   const trx =
     orm.clientBasedOperation({
-      sqlite3: () => orm.client,
+      pglite: () => orm.client,
     }) ?? (await orm.client.transaction())
 
   const ran = await orm.clientBasedOperation<Promise<boolean>>({
@@ -228,7 +228,7 @@ export async function disableForeignKeys(
 
       return check
     },
-    sqlite3: async () => {
+    pglite: async () => {
       const result = await trx.raw("PRAGMA foreign_keys;")
       const check = result?.[0] && result[0].foreign_keys != 0
 

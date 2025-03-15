@@ -4,7 +4,7 @@
 
 ![test workflow badge](https://github.com/GhomKrosmonaute/orm/actions/workflows/test.yml/badge.svg)
 
-> Compatible with [PostgreSQL](https://www.npmjs.com/package/pg), [MySQL](https://www.npmjs.com/package/mysql2), and [SQLite](https://www.npmjs.com/package/sqlite3).
+> Compatible with [PostgreSQL](https://www.postgresql.org/), [MySQL](https://www.mysql.com/fr/), and [PGLite](https://pglite.dev/) (a SQLite for PostgreSQL).
 
 ## Install
 
@@ -21,7 +21,7 @@ const orm = new ORM({
   // tables directory
   tableLocation: "./tables",
   
-  // knex config (sqlite3 by default)
+  // knex config (in-memory PGLite by default)
   database: { ... },
   
   // custom logger (console by default)
@@ -177,7 +177,7 @@ The cache of the `<ORM>.cache.raw` method is automatically invalidated when the 
 - [ ] Auto typings for tables from the column definitions
 - [ ] Add specific methods for relations and joins
 - [ ] Add admin panel
-- [ ] Make possible to switch the data between all possible clients (pg, mysql, sqlite3)
+- [ ] Make possible to switch the data between all possible clients (pg, mysql, pglite)
 - [ ] Add a way to set up timezone directly in the ORM constructor
 
 ## Used by

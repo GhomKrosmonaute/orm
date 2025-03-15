@@ -1,5 +1,6 @@
 import url from "node:url"
 import { Handler } from "@ghom/handler"
+import ClientPgLite from "knex-pglite"
 import { Knex, default as knex } from "knex"
 import { isCJS, TextStyle } from "./util.js"
 import { MigrationData, Table } from "./table.js"
@@ -32,7 +33,9 @@ export interface ORMConfig {
   /**
    * database configuration
    */
-  database?: Knex.Config
+  database?: Omit<Knex.Config, "client"> & {
+    client?: "pg" | "mysql2" | "pglite"
+  }
 
   /**
    * Logger used to log the table files loaded or created.
@@ -70,13 +73,18 @@ export class ORM {
 
   constructor(public config: ORMConfig) {
     this.client = knex(
-      config.database ?? {
-        client: "sqlite3",
-        useNullAsDefault: true,
-        connection: {
-          filename: ":memory:",
-        },
-      },
+      config.database
+        ? config.database.client === "pglite"
+          ? {
+              ...config.database,
+              client: ClientPgLite,
+              dialect: "postgres",
+            }
+          : config.database
+        : {
+            client: ClientPgLite,
+            dialect: "postgres",
+          },
     )
 
     this.handler = new Handler<Table<any>>(config.tableLocation, {
@@ -162,12 +170,12 @@ export class ORM {
   }
 
   clientBasedOperation<Return>(
-    operation: Partial<Record<"pg" | "mysql2" | "sqlite3", () => Return>>,
+    operation: Partial<Record<"pg" | "mysql2" | "pglite", () => Return>>,
   ): Return | undefined {
-    const client = (this.config.database?.client ?? "sqlite3") as
+    const client = (this.config.database?.client ?? "pglite") as
       | "pg"
       | "mysql2"
-      | "sqlite3"
+      | "pglite"
     return operation[client]?.()
   }
 
