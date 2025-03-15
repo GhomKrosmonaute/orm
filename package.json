@@ -1,0 +1,36 @@
+{
+  "name": "@ghom/jsql",
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "KnexJS SQL client for @ghom/orm",
+  "homepage": "https://github.com/GhomKrosmonaute/orm",
+  "prettier": {
+    "semi": false
+  },
+  "scripts": {
+    "format": "prettier --write src tsconfig.json tests",
+    "build": "rimraf dist && tsc",
+    "test": "vitest",
+    "prepublishOnly": "npm run format && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.0.3",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.2.2",
+    "vitest": "^3.0.8"
+  },
+  "dependencies": {
+    "knex": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "repository": {
+    "url": "https://github.com/GhomKrosmonaute/orm.git",
+    "type": "git"
+  }
+}

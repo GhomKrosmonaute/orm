@@ -1,0 +1,88 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Test
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Docker command:
+        # docker run --name pg_orm -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=postgres -p 5432:5432 -d postgres
+        image: postgres
+
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      mysql:
+        # Docker command:
+        # docker run --name mysql_orm -e MYSQL_ROOT_PASSWORD=mysql -e MYSQL_DATABASE=mysql -p 3306:3306 -d mysql:5.7
+        image: mysql:5.7
+
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: mysql
+
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 3306:3306
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build the source
+        run: npm run build
+
+      - name: Start the tests on SQLite
+        run: npm run test
+
+      - name: Start the tests on PostgreSQL
+        run: npm run test
+        env:
+          DB_CLIENT: pg
+          DB_CONNECTION: postgres://postgres:postgres@localhost:5432/postgres
+
+      - name: Start the tests on MySQL
+        run: npm run test
+        env:
+          DB_CLIENT: mysql2
+          DB_CONNECTION: mysql://root:mysql@localhost:3306/mysql

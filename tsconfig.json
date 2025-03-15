@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "module": "NodeNext",
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "declaration": true,
+    "typeRoots": ["./node_modules/@types", "./dist/typings"]
+  },
+  "include": ["src/**/*", "dist/typings/**/*"]
+}

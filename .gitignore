@@ -1,0 +1,9 @@
+node_modules
+.idea
+.vscode
+/package-lock.json
+/yarn.lock
+/yarn-error.log
+/dist
+/backup
+*.csv
