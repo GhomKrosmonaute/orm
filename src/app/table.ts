@@ -203,13 +203,13 @@ export class Table<Type extends object = object> {
 
     const baseVersion = data.version
 
-    await this.db.schema.alterTable(this.options.name, (builder) => {
-      migrations.forEach((migration, version) => {
+    for (const [version, migration] of migrations) {
+      await this.db.schema.alterTable(this.options.name, (builder) => {
         if (version <= data.version) return
         migration(builder)
         data.version = version
       })
-    })
+    }
 
     await this.db<MigrationData>("migration")
       .insert(data)

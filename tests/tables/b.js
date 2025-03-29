@@ -6,7 +6,9 @@ import { Table } from "../.."
 export default new Table({
   name: "b",
   migrations: {
-    0: (table) =>
+    0: (table) => table.string("c_id"),
+    1: (table) => table.dropColumn("c_id"),
+    2: (table) =>
       table
         .integer("c_id")
         .unsigned()
