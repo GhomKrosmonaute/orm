@@ -3,6 +3,7 @@ import path from "node:path"
 import util from "node:util"
 
 import type { LoggerStyles, ORM } from "./orm.js"
+import type { Knex } from "knex"
 
 export type TextStyle = Parameters<typeof util.styleText>[0]
 
@@ -40,4 +41,51 @@ export function styled(orm: ORM, message: string | boolean | number, style: keyo
           : DEFAULT_LOGGER_DESCRIPTION),
     String(message),
   )
+}
+
+export async function extractDatabaseConfig(config: Knex.Config["connection"]): Promise<{
+  host: string
+  port: number
+  user: string
+  password: string
+  database?: string
+}> {
+  if (!config) throw new Error("Missing database configuration")
+
+  if (typeof config === "string") {
+    const url = new URL(config)
+    return {
+      host: url.hostname,
+      port: Number(url.port),
+      user: url.username,
+      password: url.password,
+      database: url.pathname.slice(1),
+    }
+  }
+
+  if (
+    typeof config === "object" &&
+    "host" in config &&
+    "port" in config &&
+    "user" in config &&
+    "password" in config
+  ) {
+    let { host, port, user, password } = config
+
+    if (typeof password !== "string" && password) password = await password()
+    if (!password) throw new Error("Missing password")
+    if (!user) throw new Error("Missing user")
+    if (!host) throw new Error("Missing host")
+    if (!port) throw new Error("Missing port")
+
+    return {
+      host,
+      port,
+      user,
+      password,
+      database: "database" in config ? config.database : undefined,
+    }
+  }
+
+  throw new Error("Invalid database configuration")
 }

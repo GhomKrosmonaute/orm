@@ -2,9 +2,10 @@ import url from "node:url"
 import { Handler } from "@ghom/handler"
 import { CachedQuery } from "@ghom/query"
 import { type Knex, default as knex } from "knex"
+import { Client as SSH } from "ssh2"
 import { backupTable, disableForeignKeys, enableForeignKeys, restoreBackup } from "./backup.js"
 import { Table } from "./table.js"
-import { isCJS, type TextStyle } from "./util.js"
+import { extractDatabaseConfig, isCJS, type TextStyle } from "./util.js"
 
 /**
  * Verify that the environment supports ES2015+ object key ordering.
@@ -80,6 +81,13 @@ export interface ORMConfig {
      */
     alphabeticalOrder?: boolean
   }
+
+  ssh?: {
+    host: string
+    port: number
+    username: string
+    password: string
+  }
 }
 
 /**
@@ -103,6 +111,7 @@ export class ORM {
   public _client?: Knex
 
   public handler?: Handler<Table<any>>
+  public tunnel?: SSH
 
   public _rawCache?: CachedQuery<[raw: string], Knex.Raw>
 
@@ -125,15 +134,18 @@ export class ORM {
 
     if (config === false) return
 
-    this._client = knex(
-      config.database ?? {
-        client: "sqlite3",
-        useNullAsDefault: true,
-        connection: {
-          filename: ":memory:",
+    // If SSH is configured, client initialization is deferred to init()
+    if (!config.ssh) {
+      this._client = knex(
+        config.database ?? {
+          client: "sqlite3",
+          useNullAsDefault: true,
+          connection: {
+            filename: ":memory:",
+          },
         },
-      },
-    )
+      )
+    }
 
     this.handler = new Handler<Table<any>>(config.tableLocation, {
       pattern: /\.[jt]s$/,
@@ -196,6 +208,51 @@ export class ORM {
    * Handle the table files and create the tables in the database.
    */
   async init() {
+    if (this.config !== false && this.config.ssh) {
+      const databaseConfig = await extractDatabaseConfig(
+        (this.config as ORMConfig).database?.connection,
+      )
+
+      this._client = await new Promise<Knex>((resolve, reject) => {
+        const tunnel = new SSH()
+        this.tunnel = tunnel
+
+        tunnel
+          .on("error", reject)
+          .on("ready", () => {
+            tunnel.forwardOut(
+              "127.0.0.1",
+              0,
+              databaseConfig.host,
+              databaseConfig.port,
+              (err: Error | undefined, stream: NodeJS.ReadableStream) => {
+                if (err) {
+                  tunnel.end()
+                  reject(err)
+                  return
+                }
+
+                const client = knex({
+                  ...(this.config as ORMConfig).database,
+                  connection: {
+                    ...databaseConfig,
+                    stream,
+                  },
+                })
+
+                resolve(client)
+              },
+            )
+          })
+          .connect({
+            host: (this.config as ORMConfig).ssh!.host,
+            port: (this.config as ORMConfig).ssh!.port,
+            username: (this.config as ORMConfig).ssh!.username,
+            password: (this.config as ORMConfig).ssh!.password,
+          })
+      })
+    }
+
     this.requireClient()
     await this.handler.init()
 
