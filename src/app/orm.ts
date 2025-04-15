@@ -1,7 +1,8 @@
 import url from "node:url"
 import { Handler } from "@ghom/handler"
+import { Client as SSH } from "ssh2"
 import { Knex, default as knex } from "knex"
-import { isCJS, TextStyle } from "./util.js"
+import { extractDatabaseConfig, isCJS, TextStyle } from "./util.js"
 import { MigrationData, Table } from "./table.js"
 import { ResponseCache } from "./caching.js"
 import {
@@ -58,27 +59,25 @@ export interface ORMConfig {
    * Default is `Infinity`.
    */
   caching?: number
+
+  ssh?: {
+    host: string
+    port: number
+    username: string
+    password: string
+  }
 }
 
 export class ORM {
   private _ready = false
 
-  public client
+  public client: Knex | null = null
+  public tunnel: SSH | null = null
   public handler
 
   public _rawCache
 
   constructor(public config: ORMConfig) {
-    this.client = knex(
-      config.database ?? {
-        client: "sqlite3",
-        useNullAsDefault: true,
-        connection: {
-          filename: ":memory:",
-        },
-      },
-    )
-
     this.handler = new Handler<Table<any>>(config.tableLocation, {
       pattern: /\.[jt]s$/,
       loader: async (filepath) => {
@@ -109,6 +108,7 @@ export class ORM {
   }
 
   async hasTable(name: string): Promise<boolean> {
+    if (!this.client) throw new Error("missing client")
     return this.client.schema.hasTable(name)
   }
 
@@ -116,6 +116,60 @@ export class ORM {
    * Handle the table files and create the tables in the database.
    */
   async init() {
+    if (this.config.ssh) {
+      this.client = await new Promise(async (resolve, reject) => {
+        const tunnel = (this.tunnel = new SSH())
+
+        const databaseConfig = await extractDatabaseConfig(
+          this.config.database?.connection,
+        )
+
+        tunnel
+          .on("error", reject)
+          .on("ready", () => {
+            tunnel.forwardOut(
+              "127.0.0.1",
+              0,
+              databaseConfig.host,
+              databaseConfig.port,
+              (err, stream) => {
+                if (err) {
+                  tunnel.end()
+                  reject(err)
+                  return
+                }
+
+                const client = knex({
+                  ...this.config.database,
+                  connection: {
+                    ...databaseConfig,
+                    stream,
+                  },
+                })
+
+                resolve(client)
+              },
+            )
+          })
+          .connect({
+            host: this.config.ssh!.host,
+            port: this.config.ssh!.port,
+            username: this.config.ssh!.username,
+            password: this.config.ssh!.password,
+          })
+      })
+    } else {
+      this.client = knex(
+        this.config.database ?? {
+          client: "sqlite3",
+          useNullAsDefault: true,
+          connection: {
+            filename: ":memory:",
+          },
+        },
+      )
+    }
+
     await this.handler.init()
 
     try {
@@ -147,6 +201,7 @@ export class ORM {
 
   raw(sql: Knex.Value): Knex.Raw {
     if (this._ready) this.cache.invalidate()
+    if (!this.client) throw new Error("missing client")
     return this.client.raw(sql)
   }
 
