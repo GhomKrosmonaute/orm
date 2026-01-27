@@ -1,7 +1,15 @@
 import { Knex } from "knex"
-import { ORM } from "./orm.js"
+import { Handler } from "@ghom/handler"
+import { ORM, ORMConfig } from "./orm.js"
 import { styled } from "./util.js"
 import { CachedQuery } from "@ghom/query"
+
+type ConnectedORM = ORM & {
+  config: ORMConfig
+  client: Knex
+  handler: Handler<Table<any>>
+  _rawCache: CachedQuery<[raw: string], Knex.Raw>
+}
 
 export interface MigrationData {
   table: string
@@ -34,8 +42,13 @@ export class Table<Type extends object = object> {
 
   constructor(public readonly options: TableOptions<Type>) {}
 
-  get db() {
+  private requireOrm(): asserts this is Table<Type> & { orm: ConnectedORM } {
     if (!this.orm) throw new Error("missing ORM")
+    if (!this.orm.client) throw new Error("ORM client is not initialized")
+  }
+
+  get db(): Knex {
+    this.requireOrm()
     return this.orm.client
   }
 
@@ -45,8 +58,7 @@ export class Table<Type extends object = object> {
 
   get cache() {
     if (!this._whereCache || !this._countCache) throw new Error("missing cache")
-
-    if (!this.orm) throw new Error("missing ORM")
+    this.requireOrm()
 
     return {
       get: <Return>(
@@ -80,7 +92,7 @@ export class Table<Type extends object = object> {
         ) => Return,
       ) => {
         // todo: invalidate only the related tables
-        this.orm!.cache.invalidate()
+        this.orm.cache.invalidate()
         return cb(this.query)
       },
       count: (where?: string) => {
@@ -89,7 +101,7 @@ export class Table<Type extends object = object> {
       invalidate: () => {
         this._whereCache!.invalidate()
         this._countCache!.invalidate()
-        this.orm!._rawCache.invalidate()
+        this.orm._rawCache.invalidate()
       },
     }
   }
@@ -128,15 +140,16 @@ export class Table<Type extends object = object> {
 
   async make(orm: ORM): Promise<this> {
     this.orm = orm
+    this.requireOrm()
 
     this._whereCache = new CachedQuery(
       (cb: (query: Knex.QueryBuilder<Type>) => unknown) => cb(this.query),
-      this.options.caching ?? this.orm?.config.caching ?? Infinity,
+      this.options.caching ?? this.orm.config.caching ?? Infinity,
     )
 
     this._countCache = new CachedQuery(
       (where: string | null) => this.count(where ?? undefined),
-      this.options.caching ?? this.orm?.config.caching ?? Infinity,
+      this.options.caching ?? this.orm.config.caching ?? Infinity,
     )
 
     const tableNameLog = `table ${styled(this.orm, this.options.name, "highlight")}${

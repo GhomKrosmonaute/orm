@@ -16,6 +16,30 @@ import a from "./tables/a"
 import b from "./tables/b"
 import c from "./tables/c"
 
+describe("unconnected ORM", () => {
+  test("can be initialized with false", () => {
+    const unconnectedOrm = new ORM(false)
+
+    expect(unconnectedOrm).toBeInstanceOf(ORM)
+    expect(unconnectedOrm.isConnected).toBe(false)
+    expect(unconnectedOrm.config).toBe(false)
+    expect(unconnectedOrm.client).toBeUndefined()
+    expect(unconnectedOrm.handler).toBeUndefined()
+    expect(unconnectedOrm.cachedTables).toEqual([])
+    expect(unconnectedOrm.cachedTableNames).toEqual([])
+  })
+
+  test("throws when calling methods requiring client", async () => {
+    const unconnectedOrm = new ORM(false)
+
+    await expect(unconnectedOrm.init()).rejects.toThrow()
+    await expect(unconnectedOrm.hasTable("test")).rejects.toThrow()
+    expect(() => unconnectedOrm.raw("SELECT 1")).toThrow()
+    await expect(unconnectedOrm.createBackup()).rejects.toThrow()
+    await expect(unconnectedOrm.restoreBackup()).rejects.toThrow()
+  })
+})
+
 const orm = new ORM({
   tableLocation: path.join(process.cwd(), "tests", "tables"),
   backups: {

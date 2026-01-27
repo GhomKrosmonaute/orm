@@ -60,15 +60,45 @@ export interface ORMConfig {
   caching?: number
 }
 
+/**
+ * The main ORM class that manages database connections, tables, and caching.
+ *
+ * @example
+ * // With database connection
+ * const orm = new ORM({
+ *   tableLocation: "./tables",
+ *   database: { client: "sqlite3", connection: { filename: ":memory:" } }
+ * })
+ * await orm.init()
+ *
+ * @example
+ * // Without database connection (for type exports only)
+ * const orm = new ORM(false)
+ * orm.isConnected // false
+ */
 export class ORM {
   private _ready = false
 
-  public client
-  public handler
+  public client?: Knex
+  public handler?: Handler<Table<any>>
 
-  public _rawCache
+  public _rawCache?: CachedQuery<[raw: string], Knex.Raw>
 
-  constructor(public config: ORMConfig) {
+  /**
+   * Creates a new ORM instance.
+   *
+   * @param config - The ORM configuration, or `false` to create an unconnected instance.
+   *
+   * When `false` is passed, the ORM will not connect to any database.
+   * This is useful for scenarios where you only need to export types or
+   * use the ORM structure without an actual database connection.
+   *
+   * Methods that require a database connection will throw an error
+   * if called on an unconnected ORM instance.
+   */
+  constructor(public config: ORMConfig | false) {
+    if (config === false) return
+
     this.client = knex(
       config.database ?? {
         client: "sqlite3",
@@ -96,7 +126,27 @@ export class ORM {
     )
   }
 
+  private requireClient(): asserts this is ORM & {
+    config: ORMConfig
+    client: Knex
+    handler: Handler<Table<any>>
+    _rawCache: CachedQuery<[raw: string], Knex.Raw>
+  } {
+    if (!this.client)
+      throw new Error(
+        "ORM client is not initialized. Cannot use this method without a database connection.",
+      )
+  }
+
+  /**
+   * Returns true if the ORM has a database client connected.
+   */
+  get isConnected(): boolean {
+    return this.client !== undefined
+  }
+
   get cachedTables() {
+    if (!this.handler) return []
     return [...this.handler.elements.values()]
   }
 
@@ -109,6 +159,7 @@ export class ORM {
   }
 
   async hasTable(name: string): Promise<boolean> {
+    this.requireClient()
     return this.client.schema.hasTable(name)
   }
 
@@ -116,6 +167,7 @@ export class ORM {
    * Handle the table files and create the tables in the database.
    */
   async init() {
+    this.requireClient()
     await this.handler.init()
 
     try {
@@ -146,17 +198,19 @@ export class ORM {
   }
 
   raw(sql: Knex.Value): Knex.Raw {
+    this.requireClient()
     if (this._ready) this.cache.invalidate()
     return this.client.raw(sql)
   }
 
   cache = {
     raw: (sql: string, anyDataUpdated?: boolean): Promise<Knex.Raw> => {
+      this.requireClient()
       if (anyDataUpdated) this.cache.invalidate()
       return this._rawCache.get(sql, sql)
     },
     invalidate: () => {
-      this._rawCache.invalidate()
+      this._rawCache?.invalidate()
       this.cachedTables.forEach((table) => table.cache.invalidate())
     },
   }
@@ -164,6 +218,7 @@ export class ORM {
   clientBasedOperation<Return>(
     operation: Partial<Record<"pg" | "mysql2" | "sqlite3", () => Return>>,
   ): Return | undefined {
+    if (this.config === false) return undefined
     const client = (this.config.database?.client ?? "sqlite3") as
       | "pg"
       | "mysql2"
@@ -176,6 +231,7 @@ export class ORM {
    * The backup will be saved in the location specified in the config.
    */
   async createBackup(dirname?: string) {
+    this.requireClient()
     for (let table of this.cachedTables) {
       await backupTable(table, dirname)
     }
@@ -188,6 +244,7 @@ export class ORM {
    * @warning This will delete all the data in the tables.
    */
   async restoreBackup(dirname?: string) {
+    this.requireClient()
     await disableForeignKeys(this, async (trx) => {
       for (let table of this.cachedTables) {
         await restoreBackup(table, trx, dirname)

@@ -3,7 +3,7 @@ import path from "node:path"
 import csv from "json-2-csv"
 import csvParser from "csv-parser"
 import { Knex } from "knex"
-import { ORM } from "./orm.js"
+import { ORM, ORMConfig } from "./orm.js"
 import { Table } from "./table.js"
 import {
   DEFAULT_BACKUP_CHUNK_SIZE,
@@ -11,15 +11,21 @@ import {
   styled,
 } from "./util.js"
 
+function getConfig(orm: ORM): ORMConfig {
+  if (orm.config === false) throw new Error("ORM config is not available")
+  return orm.config
+}
+
 export async function backupTable(table: Table, dirname?: string) {
   if (!table.orm) throw new Error("missing ORM")
+  const config = getConfig(table.orm)
 
   let offset = 0
   let processedRows = 0
   let chunkIndex = 0
 
   const chunkDir = path.join(
-    table.orm.config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
+    config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
     dirname ?? "",
   )
 
@@ -50,7 +56,7 @@ export async function backupTable(table: Table, dirname?: string) {
       if (
         !writeStream ||
         writeStream.bytesWritten + Buffer.byteLength(csvData, "utf8") >
-          (table.orm.config.backups?.chunkSize ?? DEFAULT_BACKUP_CHUNK_SIZE)
+          (config.backups?.chunkSize ?? DEFAULT_BACKUP_CHUNK_SIZE)
       ) {
         if (writeStream) {
           closePromises.push(
@@ -115,9 +121,10 @@ export async function restoreBackup(
   dirname?: string,
 ) {
   if (!table.orm) throw new Error("missing ORM")
+  const config = getConfig(table.orm)
 
   const chunkDir = path.join(
-    table.orm.config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
+    config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
     dirname ?? "",
   )
 
@@ -214,9 +221,11 @@ export async function disableForeignKeys(
   orm: ORM,
   run: (trx: Knex.Transaction | Knex) => unknown,
 ) {
+  if (!orm.client) throw new Error("ORM client is not initialized")
+
   const trx =
     orm.clientBasedOperation({
-      sqlite3: () => orm.client,
+      sqlite3: () => orm.client!,
     }) ?? (await orm.client.transaction())
 
   const ran = await orm.clientBasedOperation<Promise<boolean>>({

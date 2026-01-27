@@ -41,6 +41,25 @@ const orm = new ORM({
 await orm.init()
 ```
 
+### Unconnected ORM
+
+You can also create an ORM instance without connecting to a database. This is useful when you only need to export types or prepare the ORM structure for a future database connection.
+
+```typescript
+import { ORM } from "@ghom/orm"
+
+const orm = new ORM(false)
+
+orm.isConnected // false
+orm.cachedTables // []
+orm.cachedTableNames // []
+
+// Methods requiring a database connection will throw an error
+orm.init() // throws Error
+orm.hasTable("user") // throws Error
+orm.raw("SELECT 1") // throws Error
+```
+
 ## Add tables
 
 The tables are automatically loaded from the `location` directory.

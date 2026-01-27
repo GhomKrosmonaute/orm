@@ -36,8 +36,9 @@ export function styled(
   message: string | boolean | number,
   style: keyof LoggerStyles,
 ) {
+  const config = orm.config !== false ? orm.config : undefined
   return util.styleText(
-    orm.config.loggerStyles?.[style] ??
+    config?.loggerStyles?.[style] ??
       (style === "highlight"
         ? DEFAULT_LOGGER_HIGHLIGHT
         : style === "rawValue"
