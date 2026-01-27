@@ -1,5 +1,4 @@
 export * from "./app/orm.js"
 export * from "./app/table.js"
-export * from "./app/caching.js"
 export * from "./app/backup.js"
 export * from "./app/util.js"

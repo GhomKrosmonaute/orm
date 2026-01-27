@@ -1,7 +1,7 @@
 import { Knex } from "knex"
 import { ORM } from "./orm.js"
 import { styled } from "./util.js"
-import { ResponseCache } from "./caching.js"
+import { CachedQuery } from "@ghom/query"
 
 export interface MigrationData {
   table: string
@@ -25,12 +25,12 @@ export interface TableOptions<Type extends object = object> {
 export class Table<Type extends object = object> {
   public orm?: ORM
 
-  public _whereCache?: ResponseCache<
+  public _whereCache?: CachedQuery<
     [cb: (query: Table<Type>["query"]) => unknown],
     unknown
   >
 
-  public _countCache?: ResponseCache<[where: string | null], Promise<number>>
+  public _countCache?: CachedQuery<[where: string | null], number>
 
   constructor(public readonly options: TableOptions<Type>) {}
 
@@ -129,12 +129,12 @@ export class Table<Type extends object = object> {
   async make(orm: ORM): Promise<this> {
     this.orm = orm
 
-    this._whereCache = new ResponseCache(
+    this._whereCache = new CachedQuery(
       (cb: (query: Knex.QueryBuilder<Type>) => unknown) => cb(this.query),
       this.options.caching ?? this.orm?.config.caching ?? Infinity,
     )
 
-    this._countCache = new ResponseCache(
+    this._countCache = new CachedQuery(
       (where: string | null) => this.count(where ?? undefined),
       this.options.caching ?? this.orm?.config.caching ?? Infinity,
     )

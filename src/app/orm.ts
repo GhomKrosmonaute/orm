@@ -3,7 +3,7 @@ import { Handler } from "@ghom/handler"
 import { Knex, default as knex } from "knex"
 import { isCJS, TextStyle } from "./util.js"
 import { MigrationData, Table } from "./table.js"
-import { ResponseCache } from "./caching.js"
+import { CachedQuery } from "@ghom/query"
 import {
   backupTable,
   restoreBackup,
@@ -90,8 +90,8 @@ export class ORM {
       },
     })
 
-    this._rawCache = new ResponseCache(
-      (raw: string) => this.raw(raw),
+    this._rawCache = new CachedQuery(
+      async (raw: string) => await this.raw(raw),
       config.caching ?? Infinity,
     )
   }
@@ -151,9 +151,9 @@ export class ORM {
   }
 
   cache = {
-    raw: (sql: string, anyDataUpdated?: boolean): Knex.Raw => {
+    raw: (sql: string, anyDataUpdated?: boolean): Promise<Knex.Raw> => {
       if (anyDataUpdated) this.cache.invalidate()
-      return this._rawCache!.get(sql, sql)
+      return this._rawCache.get(sql, sql)
     },
     invalidate: () => {
       this._rawCache.invalidate()
