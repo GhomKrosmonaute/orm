@@ -59,30 +59,30 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm install
+        run: bun install
 
       - name: Build the source
-        run: npm run build
+        run: bun run build
 
       - name: Start the tests on SQLite
-        run: npm run test
+        run: bun test
 
       - name: Start the tests on PostgreSQL
-        run: npm run test
+        run: bun test
         env:
           DB_CLIENT: pg
           DB_CONNECTION: postgres://postgres:postgres@localhost:5432/postgres
 
       - name: Start the tests on MySQL
-        run: npm run test
+        run: bun test
         env:
           DB_CLIENT: mysql2
           DB_CONNECTION: mysql://root:mysql@localhost:3306/mysql

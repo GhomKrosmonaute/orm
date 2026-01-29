@@ -1,27 +1,23 @@
 {
   "name": "@ghom/orm",
-  "version": "1.10.0",
+  "version": "2.0.0",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "description": "TypeScript KnexJS ORM & handler",
   "homepage": "https://github.com/GhomKrosmonaute/orm",
-  "prettier": {
-    "semi": false
-  },
   "scripts": {
-    "format": "prettier --write src tsconfig.json tests",
+    "format": "biome format --write src",
+    "lint": "biome lint .",
+    "check": "biome check --write .",
     "build": "rimraf dist && tsc",
-    "test": "npm run build && node --experimental-vm-modules node_modules/jest/bin/jest.js tests/test.js --detectOpenHandles",
-    "prepublishOnly": "npm run format && npm test"
+    "test": "bun test",
+    "prepublishOnly": "npm run check && npm run build && npm test"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.6",
-    "@types/node": "^22.0.0",
-    "dotenv": "^16.3.1",
-    "jest": "^29.7.0",
-    "prettier": "^3.0.3",
+    "@biomejs/biome": "^2.3.13",
+    "@types/bun": "^1.1.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.2.2"
   },

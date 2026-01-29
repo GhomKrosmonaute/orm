@@ -1,15 +1,11 @@
 import fs from "node:fs"
 import path from "node:path"
-import csv from "json-2-csv"
 import csvParser from "csv-parser"
-import { Knex } from "knex"
-import { ORM, ORMConfig } from "./orm.js"
-import { Table } from "./table.js"
-import {
-  DEFAULT_BACKUP_CHUNK_SIZE,
-  DEFAULT_BACKUP_LOCATION,
-  styled,
-} from "./util.js"
+import csv from "json-2-csv"
+import type { Knex } from "knex"
+import type { ORM, ORMConfig } from "./orm.js"
+import type { Table } from "./table.js"
+import { DEFAULT_BACKUP_CHUNK_SIZE, DEFAULT_BACKUP_LOCATION, styled } from "./util.js"
 
 function getConfig(orm: ORM): ORMConfig {
   if (orm.config === false) throw new Error("ORM config is not available")
@@ -24,10 +20,7 @@ export async function backupTable(table: Table, dirname?: string) {
   let processedRows = 0
   let chunkIndex = 0
 
-  const chunkDir = path.join(
-    config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
-    dirname ?? "",
-  )
+  const chunkDir = path.join(config.backups?.location ?? DEFAULT_BACKUP_LOCATION, dirname ?? "")
 
   if (!fs.existsSync(chunkDir)) {
     fs.mkdirSync(chunkDir, { recursive: true })
@@ -59,15 +52,10 @@ export async function backupTable(table: Table, dirname?: string) {
           (config.backups?.chunkSize ?? DEFAULT_BACKUP_CHUNK_SIZE)
       ) {
         if (writeStream) {
-          closePromises.push(
-            new Promise((resolve) => writeStream!.end(resolve)),
-          ) // Ajouter la promesse de fermeture
+          closePromises.push(new Promise((resolve) => writeStream!.end(resolve))) // Ajouter la promesse de fermeture
         }
 
-        const chunkFile = path.join(
-          chunkDir,
-          `${table.options.name}_chunk_${chunkIndex}.csv`,
-        )
+        const chunkFile = path.join(chunkDir, `${table.options.name}_chunk_${chunkIndex}.csv`)
         writeStream = fs.createWriteStream(chunkFile, { flags: "a" })
         chunkIndex++
       }
@@ -97,36 +85,21 @@ export async function backupTable(table: Table, dirname?: string) {
     await Promise.all(closePromises)
 
     console.log(
-      `\nBackup of table ${styled(
-        table.orm,
-        table.options.name,
-        "highlight",
-      )} completed.`,
+      `\nBackup of table ${styled(table.orm, table.options.name, "highlight")} completed.`,
     )
   } catch (error) {
     console.error(
-      `\nError while backing up table ${styled(
-        table.orm,
-        table.options.name,
-        "highlight",
-      )}:`,
+      `\nError while backing up table ${styled(table.orm, table.options.name, "highlight")}:`,
       error,
     )
   }
 }
 
-export async function restoreBackup(
-  table: Table,
-  trx: Knex.Transaction | Knex,
-  dirname?: string,
-) {
+export async function restoreBackup(table: Table, trx: Knex.Transaction | Knex, dirname?: string) {
   if (!table.orm) throw new Error("missing ORM")
   const config = getConfig(table.orm)
 
-  const chunkDir = path.join(
-    config.backups?.location ?? DEFAULT_BACKUP_LOCATION,
-    dirname ?? "",
-  )
+  const chunkDir = path.join(config.backups?.location ?? DEFAULT_BACKUP_LOCATION, dirname ?? "")
 
   const chunkFiles = fs
     .readdirSync(chunkDir)
@@ -140,7 +113,7 @@ export async function restoreBackup(
     let processedChunks = 0
     let totalRowsRestored = 0
 
-    for (let chunkFile of chunkFiles) {
+    for (const chunkFile of chunkFiles) {
       const filePath = path.join(chunkDir, chunkFile)
 
       let rows: any[] = []
@@ -186,11 +159,7 @@ export async function restoreBackup(
         table.orm,
         table.options.name,
         "highlight",
-      )} restored. Total rows: ${styled(
-        table.orm,
-        String(totalRowsRestored),
-        "rawValue",
-      )}`,
+      )} restored. Total rows: ${styled(table.orm, String(totalRowsRestored), "rawValue")}`,
     )
   } catch (error) {
     console.error(
@@ -204,10 +173,7 @@ export async function restoreBackup(
   }
 }
 
-export async function enableForeignKeys(
-  orm: ORM,
-  trx?: Knex.Transaction | Knex,
-) {
+export async function enableForeignKeys(orm: ORM, trx?: Knex.Transaction | Knex) {
   const ctx = trx ?? orm
 
   await orm.clientBasedOperation({
@@ -217,21 +183,18 @@ export async function enableForeignKeys(
   })
 }
 
-export async function disableForeignKeys(
-  orm: ORM,
-  run: (trx: Knex.Transaction | Knex) => unknown,
-) {
-  if (!orm.client) throw new Error("ORM client is not initialized")
+export async function disableForeignKeys(orm: ORM, run: (trx: Knex.Transaction | Knex) => unknown) {
+  if (!orm._client) throw new Error("ORM client is not initialized")
 
   const trx =
     orm.clientBasedOperation({
-      sqlite3: () => orm.client!,
-    }) ?? (await orm.client.transaction())
+      sqlite3: () => orm._client!,
+    }) ?? (await orm._client.transaction())
 
-  const ran = await orm.clientBasedOperation<Promise<boolean>>({
+  const _ran = await orm.clientBasedOperation<Promise<boolean>>({
     mysql2: async () => {
       const result = await trx.raw("SELECT @@FOREIGN_KEY_CHECKS;")
-      const check = result?.[0] && result[0]["@@FOREIGN_KEY_CHECKS"] != 0
+      const check = result?.[0] && result[0]["@@FOREIGN_KEY_CHECKS"] !== 0
 
       if (check) await trx.raw("SET FOREIGN_KEY_CHECKS = 0;")
 
@@ -239,7 +202,7 @@ export async function disableForeignKeys(
     },
     sqlite3: async () => {
       const result = await trx.raw("PRAGMA foreign_keys;")
-      const check = result?.[0] && result[0].foreign_keys != 0
+      const check = result?.[0] && result[0].foreign_keys !== 0
 
       if (check) await trx.raw("PRAGMA foreign_keys = 0;")
 
@@ -247,9 +210,7 @@ export async function disableForeignKeys(
     },
     pg: async () => {
       const result = await trx.raw("SHOW session_replication_role;")
-      const check =
-        result?.rows?.[0] &&
-        result.rows[0].session_replication_role !== "replica"
+      const check = result?.rows?.[0] && result.rows[0].session_replication_role !== "replica"
 
       if (check) await trx.raw("SET session_replication_role = replica;")
 

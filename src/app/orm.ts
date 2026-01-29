@@ -1,15 +1,10 @@
 import url from "node:url"
 import { Handler } from "@ghom/handler"
-import { Knex, default as knex } from "knex"
-import { isCJS, TextStyle } from "./util.js"
-import { MigrationData, Table } from "./table.js"
 import { CachedQuery } from "@ghom/query"
-import {
-  backupTable,
-  restoreBackup,
-  disableForeignKeys,
-  enableForeignKeys,
-} from "./backup.js"
+import { type Knex, default as knex } from "knex"
+import { backupTable, disableForeignKeys, enableForeignKeys, restoreBackup } from "./backup.js"
+import { Table } from "./table.js"
+import { isCJS, type TextStyle } from "./util.js"
 
 export interface ILogger {
   log: (message: string) => void
@@ -78,8 +73,8 @@ export interface ORMConfig {
  */
 export class ORM {
   private _ready = false
+  public _client?: Knex
 
-  public client?: Knex
   public handler?: Handler<Table<any>>
 
   public _rawCache?: CachedQuery<[raw: string], Knex.Raw>
@@ -99,7 +94,7 @@ export class ORM {
   constructor(public config: ORMConfig | false) {
     if (config === false) return
 
-    this.client = knex(
+    this._client = knex(
       config.database ?? {
         client: "sqlite3",
         useNullAsDefault: true,
@@ -112,9 +107,7 @@ export class ORM {
     this.handler = new Handler<Table<any>>(config.tableLocation, {
       pattern: /\.[jt]s$/,
       loader: async (filepath) => {
-        const file = await import(
-          isCJS ? filepath : url.pathToFileURL(filepath).href
-        )
+        const file = await import(isCJS ? filepath : url.pathToFileURL(filepath).href)
         if (file.default instanceof Table) return file.default
         throw new Error(`${filepath}: default export must be a Table instance`)
       },
@@ -128,21 +121,26 @@ export class ORM {
 
   private requireClient(): asserts this is ORM & {
     config: ORMConfig
-    client: Knex
+    _client: Knex
     handler: Handler<Table<any>>
     _rawCache: CachedQuery<[raw: string], Knex.Raw>
   } {
-    if (!this.client)
+    if (!this._client)
       throw new Error(
         "ORM client is not initialized. Cannot use this method without a database connection.",
       )
+  }
+
+  get client(): Knex {
+    this.requireClient()
+    return this._client
   }
 
   /**
    * Returns true if the ORM has a database client connected.
    */
   get isConnected(): boolean {
-    return this.client !== undefined
+    return this._client !== undefined
   }
 
   get cachedTables() {
@@ -160,7 +158,7 @@ export class ORM {
 
   async hasTable(name: string): Promise<boolean> {
     this.requireClient()
-    return this.client.schema.hasTable(name)
+    return this._client.schema.hasTable(name)
   }
 
   /**
@@ -176,13 +174,13 @@ export class ORM {
 
     this.handler.elements.set(
       "migration",
-      new Table<MigrationData>({
+      new Table({
         name: "migration",
         priority: Infinity,
-        setup: (table) => {
-          table.string("table").unique().notNullable()
-          table.integer("version").notNullable()
-        },
+        columns: (col) => ({
+          table: col.string().unique(),
+          version: col.integer(),
+        }),
       }),
     )
 
@@ -200,7 +198,7 @@ export class ORM {
   raw(sql: Knex.Value): Knex.Raw {
     this.requireClient()
     if (this._ready) this.cache.invalidate()
-    return this.client.raw(sql)
+    return this._client.raw(sql)
   }
 
   cache = {
@@ -219,10 +217,7 @@ export class ORM {
     operation: Partial<Record<"pg" | "mysql2" | "sqlite3", () => Return>>,
   ): Return | undefined {
     if (this.config === false) return undefined
-    const client = (this.config.database?.client ?? "sqlite3") as
-      | "pg"
-      | "mysql2"
-      | "sqlite3"
+    const client = (this.config.database?.client ?? "sqlite3") as "pg" | "mysql2" | "sqlite3"
     return operation[client]?.()
   }
 
@@ -232,7 +227,7 @@ export class ORM {
    */
   async createBackup(dirname?: string) {
     this.requireClient()
-    for (let table of this.cachedTables) {
+    for (const table of this.cachedTables) {
       await backupTable(table, dirname)
     }
 
@@ -246,7 +241,7 @@ export class ORM {
   async restoreBackup(dirname?: string) {
     this.requireClient()
     await disableForeignKeys(this, async (trx) => {
-      for (let table of this.cachedTables) {
+      for (const table of this.cachedTables) {
         await restoreBackup(table, trx, dirname)
       }
     })

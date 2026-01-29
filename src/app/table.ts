@@ -1,8 +1,9 @@
-import { Knex } from "knex"
-import { Handler } from "@ghom/handler"
-import { ORM, ORMConfig } from "./orm.js"
-import { styled } from "./util.js"
+import type { Handler } from "@ghom/handler"
 import { CachedQuery } from "@ghom/query"
+import type { Knex } from "knex"
+import { buildColumnsSchema, type ColumnDef, col, type InferColumns } from "./column.js"
+import type { ORM, ORMConfig } from "./orm.js"
+import { styled } from "./util.js"
 
 type ConnectedORM = ORM & {
   config: ORMConfig
@@ -16,7 +17,11 @@ export interface MigrationData {
   version: number
 }
 
-export interface TableOptions<Type extends object = object> {
+/**
+ * Table options with typed columns.
+ * Type is automatically inferred from the column definitions.
+ */
+export interface TableOptions<Columns extends Record<string, ColumnDef<any, any>>> {
   name: string
   description?: string
   priority?: number
@@ -25,35 +30,62 @@ export interface TableOptions<Type extends object = object> {
    * Default is `Infinity`.
    */
   caching?: number
-  migrations?: { [version: number]: (table: Knex.CreateTableBuilder) => void }
-  then?: (this: Table<Type>, table: Table<Type>) => unknown
-  setup: (table: Knex.CreateTableBuilder) => void
+  migrations?: { [version: number]: (builder: Knex.CreateTableBuilder) => void }
+  then?: (this: Table<Columns>, table: Table<Columns>) => unknown
+  /**
+   * Typed columns definition with automatic type inference.
+   *
+   * @example
+   * columns: (col) => ({
+   *   id: col.increments(),
+   *   username: col.string().unique(),
+   *   age: col.integer().nullable(),
+   *   role: col.enum(["admin", "user"]),
+   * })
+   */
+  columns: (col: typeof import("./column.js").col) => Columns
 }
 
-export class Table<Type extends object = object> {
+/**
+ * Represents a database table with typed columns.
+ *
+ * @example
+ * const userTable = new Table({
+ *   name: "user",
+ *   columns: (col) => ({
+ *     id: col.increments(),
+ *     username: col.string().unique(),
+ *     age: col.integer().nullable(),
+ *   }),
+ * })
+ * // Type is automatically inferred as { id: number; username: string; age: number | null }
+ */
+export class Table<
+  Columns extends Record<string, ColumnDef<any, any>> = Record<string, ColumnDef<any, any>>,
+> {
   public orm?: ORM
 
-  public _whereCache?: CachedQuery<
-    [cb: (query: Table<Type>["query"]) => unknown],
-    unknown
-  >
+  public _whereCache?: CachedQuery<[cb: (query: Table<Columns>["query"]) => unknown], unknown>
 
   public _countCache?: CachedQuery<[where: string | null], number>
 
-  constructor(public readonly options: TableOptions<Type>) {}
+  constructor(public readonly options: TableOptions<Columns>) {}
 
-  private requireOrm(): asserts this is Table<Type> & { orm: ConnectedORM } {
+  /** The inferred TypeScript type for rows of this table */
+  declare readonly $type: InferColumns<Columns>
+
+  private requireOrm(): asserts this is Table<Columns> & { orm: ConnectedORM } {
     if (!this.orm) throw new Error("missing ORM")
-    if (!this.orm.client) throw new Error("ORM client is not initialized")
+    if (!this.orm._client) throw new Error("ORM client is not initialized")
   }
 
-  get db(): Knex {
+  get client(): Knex {
     this.requireOrm()
     return this.orm.client
   }
 
   get query() {
-    return this.db<Type>(this.options.name)
+    return this.client<InferColumns<Columns>>(this.options.name)
   }
 
   get cache() {
@@ -65,14 +97,8 @@ export class Table<Type extends object = object> {
         id: string,
         cb: (
           table: Pick<
-            Table<Type>["query"],
-            | "select"
-            | "count"
-            | "avg"
-            | "sum"
-            | "countDistinct"
-            | "avgDistinct"
-            | "sumDistinct"
+            Table<Columns>["query"],
+            "select" | "count" | "avg" | "sum" | "countDistinct" | "avgDistinct" | "sumDistinct"
           >,
         ) => Return,
       ): Return => {
@@ -81,13 +107,8 @@ export class Table<Type extends object = object> {
       set: <Return>(
         cb: (
           table: Pick<
-            Table<Type>["query"],
-            | "update"
-            | "delete"
-            | "insert"
-            | "upsert"
-            | "truncate"
-            | "jsonInsert"
+            Table<Columns>["query"],
+            "update" | "delete" | "insert" | "upsert" | "truncate" | "jsonInsert"
           >,
         ) => Return,
       ) => {
@@ -108,29 +129,26 @@ export class Table<Type extends object = object> {
 
   async count(where?: string): Promise<number> {
     return this.query
-      .select(this.db.raw("count(*) as total"))
+      .select(this.client.raw("count(*) as total"))
       .whereRaw(where ?? "1=1")
-      .then(
-        (rows) =>
-          +((rows?.[0] ?? { total: 0 }) as unknown as { total: number }).total,
-      )
+      .then((rows) => +((rows?.[0] ?? { total: 0 }) as unknown as { total: number }).total)
   }
 
-  async hasColumn(name: keyof Type & string): Promise<boolean> {
-    return this.db.schema.hasColumn(this.options.name, name as string)
+  async hasColumn(name: keyof InferColumns<Columns> & string): Promise<boolean> {
+    return this.client.schema.hasColumn(this.options.name, name as string)
   }
 
-  async getColumn(name: keyof Type & string): Promise<Knex.ColumnInfo> {
-    return this.db(this.options.name).columnInfo(name)
+  async getColumn(name: keyof InferColumns<Columns> & string): Promise<Knex.ColumnInfo> {
+    return this.client(this.options.name).columnInfo(name)
   }
 
-  async getColumns(): Promise<Record<keyof Type & string, Knex.ColumnInfo>> {
-    return this.db(this.options.name).columnInfo()
+  async getColumns(): Promise<Record<keyof InferColumns<Columns> & string, Knex.ColumnInfo>> {
+    return this.client(this.options.name).columnInfo()
   }
 
-  async getColumnNames(): Promise<Array<keyof Type & string>> {
+  async getColumnNames(): Promise<Array<keyof InferColumns<Columns> & string>> {
     return this.getColumns().then(Object.keys) as Promise<
-      Array<keyof Type & string>
+      Array<keyof InferColumns<Columns> & string>
     >
   }
 
@@ -143,7 +161,7 @@ export class Table<Type extends object = object> {
     this.requireOrm()
 
     this._whereCache = new CachedQuery(
-      (cb: (query: Knex.QueryBuilder<Type>) => unknown) => cb(this.query),
+      (cb: (query: Knex.QueryBuilder<InferColumns<Columns>>) => unknown) => cb(this.query),
       this.options.caching ?? this.orm.config.caching ?? Infinity,
     )
 
@@ -159,13 +177,16 @@ export class Table<Type extends object = object> {
     }`
 
     try {
-      await this.db.schema.createTable(this.options.name, this.options.setup)
+      await this.client.schema.createTable(this.options.name, (builder) => {
+        const columns = this.options.columns(col)
+        buildColumnsSchema(builder, columns)
+      })
 
       this.orm.config.logger?.log(`created table ${tableNameLog}`)
     } catch (error: any) {
       if (error.toString().includes("syntax error")) {
         this.orm.config.logger?.error(
-          `you need to implement the "setup" method in options of your ${styled(this.orm, this.options.name, "highlight")} table!`,
+          `you need to implement the "columns" callback in options of your ${styled(this.orm, this.options.name, "highlight")} table!`,
         )
 
         throw error
@@ -188,7 +209,12 @@ export class Table<Type extends object = object> {
       throw error
     }
 
-    if ((await this.count()) === 0) await this.options.then?.bind(this)(this)
+    if ((await this.count()) === 0) {
+      const thenFn = this.options.then as
+        | ((this: Table<Columns>, table: Table<Columns>) => unknown)
+        | undefined
+      await thenFn?.bind(this)(this)
+    }
 
     return this
   }
@@ -196,16 +222,13 @@ export class Table<Type extends object = object> {
   private async migrate(): Promise<false | number> {
     if (!this.options.migrations) return false
 
-    const migrations = new Map<
-      number,
-      (table: Knex.CreateTableBuilder) => void
-    >(
+    const migrations = new Map<number, (table: Knex.CreateTableBuilder) => void>(
       Object.entries(this.options.migrations)
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map((entry) => [Number(entry[0]), entry[1]]),
     )
 
-    const fromDatabase = await this.db<MigrationData>("migration")
+    const fromDatabase = await this.client<MigrationData>("migration")
       .where("table", this.options.name)
       .first()
 
@@ -217,17 +240,14 @@ export class Table<Type extends object = object> {
     const baseVersion = data.version
 
     for (const [version, migration] of migrations) {
-      await this.db.schema.alterTable(this.options.name, (builder) => {
+      await this.client.schema.alterTable(this.options.name, (builder) => {
         if (version <= data.version) return
         migration(builder)
         data.version = version
       })
     }
 
-    await this.db<MigrationData>("migration")
-      .insert(data)
-      .onConflict("table")
-      .merge()
+    await this.client<MigrationData>("migration").insert(data).onConflict("table").merge()
 
     return baseVersion === data.version ? false : data.version
   }
