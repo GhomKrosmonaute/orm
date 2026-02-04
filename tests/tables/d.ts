@@ -1,9 +1,5 @@
 import { Table } from "../../src"
 
-/**
- * Table using the new typed columns system.
- * Type is automatically inferred from the column definitions.
- */
 export default new Table({
   name: "d",
   priority: 0,

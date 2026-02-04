@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -8,8 +8,7 @@
   "description": "TypeScript KnexJS ORM & handler",
   "homepage": "https://github.com/GhomKrosmonaute/orm",
   "scripts": {
-    "format": "biome format --write src",
-    "lint": "biome lint .",
+    "format": "biome format --write .",
     "check": "biome check --write .",
     "build": "rimraf dist && tsc",
     "test": "bun test",

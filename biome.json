@@ -24,6 +24,9 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "complexity": {
+        "noBannedTypes": "off"
+      },
       "suspicious": {
         "noExplicitAny": "off",
         "noThenProperty": "off",
@@ -32,6 +35,10 @@
       "style": {
         "noNonNullAssertion": "off",
         "useNodejsImportProtocol": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "off",
+        "noUnusedImports": "off"
       }
     }
   },

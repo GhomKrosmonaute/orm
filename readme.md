@@ -62,45 +62,116 @@ orm.raw("SELECT 1") // throws Error
 
 ## Add tables
 
-The tables are automatically loaded from the `location` directory.
+The tables are automatically loaded from the `tableLocation` directory. Types are automatically inferred from the column definitions.
 
 ```typescript
 // tables/user.ts
 
-import { Table } from "@ghom/orm"
+import { Table, col } from "@ghom/orm"
 
-interface User {
-  username: string
-  password: string
-}
-
-export default new Table<User>({
+export default new Table({
   name: "user",
   
   // the higher the priority, the earlier the table is compiled
   priority: 0,
   
-  // the migration are executed in order of version number
+  // typed columns definition with automatic type inference
+  columns: (col) => ({
+    id: col.increments(),
+    username: col.string().unique(),
+    password: col.string(),
+    age: col.integer().nullable(),
+    role: col.enum(["admin", "user"]).defaultTo("user"),
+  }),
+  
+  // migrations are executed in order based on key pattern (see Migration Keys section)
   migrations: {
-    1: (table) => {
+    "1": (table) => {
       table.renameColumn("name", "username")
     }
   },
   
-  // the setup is executed only once for table creation
-  setup: (table) => {
-    table.string("name").notNullable()
-    table.string("password").notNullable()
-  },
-  
-  // the then is executed after the table is created and the migrations are runned
+  // then is executed after the table is created and the migrations are run (only if table is empty)
   then: ({ query }) => {
-    query.insert({ username: "admin", password: "admin" })
+    query.insert({ username: "admin", password: "admin", role: "admin" })
   },
   
   caching: 10 * 60 * 1000 // The table cache. Default to the ORM cache or Infinity
 })
+
+// Type is automatically inferred:
+// { id: number; username: string; password: string; age: number | null; role: "admin" | "user" }
+type User = typeof userTable.$type
 ```
+
+### Typed Migrations
+
+You can also use typed migrations that automatically update the TypeScript type:
+
+```typescript
+import { Table, col, migrate } from "@ghom/orm"
+
+export default new Table({
+  name: "user",
+  columns: (col) => ({
+    id: col.increments(),
+    name: col.string(),  // will be renamed to username
+  }),
+  migrations: {
+    "001_rename_name": migrate.renameColumn("name", "username"),
+    "002_add_email": migrate.addColumn("email", col.string()),
+    "003_add_age": migrate.addColumn("age", col.integer().nullable()),
+  },
+})
+
+// Final type: { id: number; username: string; email: string; age: number | null }
+```
+
+Available migration helpers:
+- `migrate.addColumn(name, columnDef)` - Add a new column
+- `migrate.dropColumn(name)` - Remove a column
+- `migrate.renameColumn(oldName, newName)` - Rename a column
+- `migrate.alterColumn(name, newColumnDef)` - Change column type/constraints
+- `migrate.addIndex(columns, name?)` - Add an index
+- `migrate.dropIndex(name)` - Remove an index
+- `migrate.addUnique(columns, name?)` - Add a unique constraint
+- `migrate.dropUnique(name)` - Remove a unique constraint
+- `migrate.raw(callback)` - Custom migration callback
+
+## Migration Keys
+
+The ORM supports three patterns for migration keys:
+
+1. **Numeric keys** (`"1"`, `"2"`, `"10"`): Sorted numerically
+2. **Numeric-prefixed keys** (`"001_init"`, `"002_add_users"`, `"010_fix"`): Sorted by numeric prefix
+3. **Pure string keys** (`"init"`, `"add_users"`): Uses insertion order (ES2015+)
+
+> **Warning**: Mixing key patterns is not allowed and will throw an error at runtime.
+
+### Migration Configuration
+
+```typescript
+const orm = new ORM({
+  tableLocation: "./tables",
+  migrations: {
+    /**
+     * NOT RECOMMENDED
+     * Force alphabetical sorting for string migration keys.
+     * 
+     * If your keys start with numbers (e.g., "001_init"), 
+     * they are automatically sorted by those numbers, 
+     * not alphabetically.
+     */
+    alphabeticalOrder: false // default
+  }
+})
+```
+
+### ES2015+ Requirement
+
+This ORM requires ES2015+ for guaranteed object key insertion order. Node.js 6+ and all modern browsers are supported.
+
+The ORM performs a runtime check on initialization and will throw an error if the environment doesn't support ES2015+ key ordering.
 
 ## Launch a query
 
@@ -192,8 +263,9 @@ The cache of the `<ORM>.cache.raw` method is automatically invalidated when the 
 
 - [x] Add timed caching system
 - [x] Add backup option
+- [x] Auto typings for tables from the column definitions
+- [x] Typed migrations with automatic type inference
 - [ ] Dependency management between tables
-- [ ] Auto typings for tables from the column definitions
 - [ ] Add specific methods for relations and joins
 - [ ] Add admin panel
 - [ ] Make possible to switch the data between all possible clients (pg, mysql, sqlite3)

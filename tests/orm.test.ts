@@ -3,7 +3,7 @@ import fs from "fs"
 import path from "path"
 import { rimraf } from "rimraf"
 
-import { col, ORM, type ORMConfig, Table } from "../src"
+import { col, migrate, ORM, type ORMConfig, Table } from "../src"
 
 import a from "./tables/a"
 import b from "./tables/b"
@@ -54,6 +54,149 @@ describe("typed columns", () => {
     expect(d).toBeInstanceOf(Table)
     expect(d.options.name).toBe("d")
     expect("columns" in d.options).toBe(true)
+  })
+})
+
+describe("typed migrations", () => {
+  test("migrate.addColumn creates TypedMigration", () => {
+    const migration = migrate.addColumn("email", col.string())
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+    expect("_from" in migration).toBe(true)
+    expect("_to" in migration).toBe(true)
+  })
+
+  test("migrate.dropColumn creates TypedMigration", () => {
+    const migration = migrate.dropColumn("oldField")
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("migrate.renameColumn creates TypedMigration", () => {
+    const migration = migrate.renameColumn("name", "username")
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("migrate.alterColumn creates TypedMigration", () => {
+    const migration = migrate.alterColumn("age", col.integer().nullable())
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("migrate.addIndex creates TypedMigration", () => {
+    const migration = migrate.addIndex(["email"], "idx_email")
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("migrate.addUnique creates TypedMigration", () => {
+    const migration = migrate.addUnique(["email"], "uniq_email")
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("migrate.raw creates TypedMigration", () => {
+    const migration = migrate.raw((builder) => {
+      builder.dropColumn("temp")
+    })
+
+    expect(migration).toBeDefined()
+    expect(migration.apply).toBeInstanceOf(Function)
+  })
+
+  test("Table with typed migrations has correct options", () => {
+    const userTable = new Table({
+      name: "test_typed_migrations",
+      columns: (col) => ({
+        id: col.increments(),
+        name: col.string(),
+      }),
+      migrations: {
+        "001_add_email": migrate.addColumn("email", col.string()),
+        "002_add_age": migrate.addColumn("age", col.integer().nullable()),
+        "003_rename_name": migrate.renameColumn("name", "username"),
+      },
+    })
+
+    expect(userTable).toBeInstanceOf(Table)
+    expect(userTable.options.migrations).toBeDefined()
+    expect(Object.keys(userTable.options.migrations!).length).toBe(3)
+
+    // Type inference check - final type includes base columns + migrations
+    // "name" is removed by renameColumn, "username" is added
+    type ExpectedType = typeof userTable.$type
+    const _typeCheck: ExpectedType = {
+      id: 1,
+      username: "test", // renamed from "name"
+      // @ts-expect-error - name is removed by renameColumn
+      name: "test",
+      email: "test@example.com",
+      age: null,
+    }
+  })
+})
+
+describe("migration key patterns", () => {
+  test("Table accepts pure numeric keys", () => {
+    const table = new Table({
+      name: "test_numeric_keys",
+      columns: (col) => ({
+        id: col.increments(),
+      }),
+      migrations: {
+        "1": (_builder) => {},
+        "2": (_builder) => {},
+        "10": (_builder) => {},
+      },
+    })
+
+    expect(table.options.migrations).toBeDefined()
+    expect(Object.keys(table.options.migrations!)).toEqual(["1", "2", "10"])
+  })
+
+  test("Table accepts numeric-prefixed keys", () => {
+    const table = new Table({
+      name: "test_prefixed_keys",
+      columns: (col) => ({
+        id: col.increments(),
+      }),
+      migrations: {
+        "001_init": (_builder) => {},
+        "002_add_column": (_builder) => {},
+        "010_fix": (_builder) => {},
+      },
+    })
+
+    expect(table.options.migrations).toBeDefined()
+    expect(Object.keys(table.options.migrations!)).toEqual([
+      "001_init",
+      "002_add_column",
+      "010_fix",
+    ])
+  })
+
+  test("Table accepts pure string keys", () => {
+    const table = new Table({
+      name: "test_string_keys",
+      columns: (col) => ({
+        id: col.increments(),
+      }),
+      migrations: {
+        init: (_builder) => {},
+        add_column: (_builder) => {},
+        fix: (_builder) => {},
+      },
+    })
+
+    expect(table.options.migrations).toBeDefined()
+    expect(Object.keys(table.options.migrations!)).toEqual(["init", "add_column", "fix"])
   })
 })
 

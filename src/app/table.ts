@@ -2,8 +2,14 @@ import type { Handler } from "@ghom/handler"
 import { CachedQuery } from "@ghom/query"
 import type { Knex } from "knex"
 import { buildColumnsSchema, type ColumnDef, col, type InferColumns } from "./column.js"
+import type { FinalTableType, TypedMigration } from "./migration.js"
 import type { ORM, ORMConfig } from "./orm.js"
 import { styled } from "./util.js"
+
+/**
+ * A migration can be either a callback function or a TypedMigration object.
+ */
+export type MigrationValue = ((builder: Knex.CreateTableBuilder) => void) | TypedMigration<any, any>
 
 type ConnectedORM = ORM & {
   config: ORMConfig
@@ -14,14 +20,20 @@ type ConnectedORM = ORM & {
 
 export interface MigrationData {
   table: string
-  version: number
+  version: string
 }
 
 /**
- * Table options with typed columns.
- * Type is automatically inferred from the column definitions.
+ * Table options with typed columns and optional typed migrations.
+ * Type is automatically inferred from the column definitions and migrations.
+ *
+ * @template Columns - Record of column definitions
+ * @template Migrations - Record of migration definitions (optional)
  */
-export interface TableOptions<Columns extends Record<string, ColumnDef<any, any>>> {
+export interface TableOptions<
+  Columns extends Record<string, ColumnDef<any, any>>,
+  Migrations extends Record<string, MigrationValue> = {},
+> {
   name: string
   description?: string
   priority?: number
@@ -30,8 +42,30 @@ export interface TableOptions<Columns extends Record<string, ColumnDef<any, any>
    * Default is `Infinity`.
    */
   caching?: number
-  migrations?: { [version: number]: (builder: Knex.CreateTableBuilder) => void }
-  then?: (this: Table<Columns>, table: Table<Columns>) => unknown
+  /**
+   * Database migrations to apply.
+   *
+   * Supports three key patterns:
+   * - **Numeric keys** (`"1"`, `"2"`): Sorted numerically
+   * - **Numeric-prefixed keys** (`"001_init"`, `"002_add"`): Sorted by prefix
+   * - **Pure string keys** (`"init"`, `"add"`): Uses insertion order
+   *
+   * Can use either callback functions or TypedMigration objects.
+   *
+   * @example
+   * // Using callbacks
+   * migrations: {
+   *   "1": (builder) => builder.dropColumn("oldField"),
+   * }
+   *
+   * @example
+   * // Using typed migrations
+   * migrations: {
+   *   "001_add_email": migrate.addColumn("email", col.string()),
+   * }
+   */
+  migrations?: Migrations
+  then?: (this: Table<Columns, Migrations>, table: Table<Columns, Migrations>) => unknown
   /**
    * Typed columns definition with automatic type inference.
    *
@@ -47,7 +81,7 @@ export interface TableOptions<Columns extends Record<string, ColumnDef<any, any>
 }
 
 /**
- * Represents a database table with typed columns.
+ * Represents a database table with typed columns and migrations.
  *
  * @example
  * const userTable = new Table({
@@ -59,20 +93,44 @@ export interface TableOptions<Columns extends Record<string, ColumnDef<any, any>
  *   }),
  * })
  * // Type is automatically inferred as { id: number; username: string; age: number | null }
+ *
+ * @example
+ * // With typed migrations
+ * const userTable = new Table({
+ *   name: "user",
+ *   columns: (col) => ({
+ *     id: col.increments(),
+ *     name: col.string(),
+ *   }),
+ *   migrations: {
+ *     "001_rename": migrate.renameColumn("name", "username"),
+ *     "002_add_email": migrate.addColumn("email", col.string()),
+ *   },
+ * })
+ * // Type includes migration transforms: { id: number; username: string; email: string }
  */
 export class Table<
   Columns extends Record<string, ColumnDef<any, any>> = Record<string, ColumnDef<any, any>>,
+  Migrations extends Record<string, MigrationValue> = {},
 > {
   public orm?: ORM
 
-  public _whereCache?: CachedQuery<[cb: (query: Table<Columns>["query"]) => unknown], unknown>
+  public _whereCache?: CachedQuery<
+    [cb: (query: Table<Columns, Migrations>["query"]) => unknown],
+    unknown
+  >
 
   public _countCache?: CachedQuery<[where: string | null], number>
 
-  constructor(public readonly options: TableOptions<Columns>) {}
+  constructor(public readonly options: TableOptions<Columns, Migrations>) {}
 
-  /** The inferred TypeScript type for rows of this table */
-  declare readonly $type: InferColumns<Columns>
+  /**
+   * The inferred TypeScript type for rows of this table.
+   * Includes base columns and all migration type transforms.
+   */
+  declare readonly $type: Migrations extends Record<string, TypedMigration<any, any>>
+    ? FinalTableType<Columns, Migrations>
+    : InferColumns<Columns>
 
   private requireOrm(): asserts this is Table<Columns> & { orm: ConnectedORM } {
     if (!this.orm) throw new Error("missing ORM")
@@ -111,7 +169,7 @@ export class Table<
             "update" | "delete" | "insert" | "upsert" | "truncate" | "jsonInsert"
           >,
         ) => Return,
-      ) => {
+      ): Return => {
         // todo: invalidate only the related tables
         this.orm.cache.invalidate()
         return cb(this.query)
@@ -211,7 +269,7 @@ export class Table<
 
     if ((await this.count()) === 0) {
       const thenFn = this.options.then as
-        | ((this: Table<Columns>, table: Table<Columns>) => unknown)
+        | ((this: Table<Columns, Migrations>, table: Table<Columns, Migrations>) => unknown)
         | undefined
       await thenFn?.bind(this)(this)
     }
@@ -219,32 +277,121 @@ export class Table<
     return this
   }
 
-  private async migrate(): Promise<false | number> {
+  /**
+   * Get sorted migration keys based on their pattern.
+   * - Pure numeric keys ("1", "2", "10") are sorted numerically
+   * - Numeric-prefixed keys ("001_add", "010_rename") are sorted by prefix
+   * - Pure string keys ("add_email", "rename") use insertion order or alphabetical
+   */
+  private getMigrationKeys(): string[] {
+    const keys = Object.keys(this.options.migrations ?? {})
+
+    if (keys.length === 0) return []
+
+    // Detect key type patterns
+    const allPureNumeric = keys.every((k) => /^\d+$/.test(k))
+    const allNumericPrefix = keys.every((k) => /^\d+/.test(k))
+    const allPureString = keys.every((k) => !/^\d/.test(k))
+
+    // Validate: no mixing allowed
+    if (!allPureNumeric && !allNumericPrefix && !allPureString) {
+      throw new Error(
+        `Table "${this.options.name}": Cannot mix migration key patterns. ` +
+          `Use one of: pure numbers (1, 2), prefixed strings ("001_x", "002_y"), or pure strings ("add_x").`,
+      )
+    }
+
+    if (allPureNumeric) {
+      // Sort purely numeric keys numerically: 1, 2, 10, 20
+      return keys.sort((a, b) => Number(a) - Number(b))
+    }
+
+    if (allNumericPrefix) {
+      // Sort by numeric prefix: "001_x" < "002_y" < "010_z"
+      const getNumericPrefix = (key: string) => parseInt(key.match(/^(\d+)/)?.[1] ?? "0", 10)
+      return keys.sort((a, b) => getNumericPrefix(a) - getNumericPrefix(b))
+    }
+
+    // Pure strings: alphabetical order OR insertion order
+    // Get ORM config if available (and not false for unconnected ORM)
+    const ormConfig = this.orm?.config === false ? undefined : this.orm?.config
+    if (ormConfig?.migrations?.alphabeticalOrder) {
+      return keys.sort((a, b) => a.localeCompare(b))
+    }
+
+    // Warning for insertion order (Git merge risks)
+    if (keys.length > 1 && ormConfig) {
+      ormConfig.logger?.warn?.(
+        `Table "${this.options.name}": Using insertion order for string migration keys. ` +
+          `This may cause issues with Git merges. Consider using numeric prefixes (e.g., "001_init").`,
+      )
+    }
+
+    return keys // Insertion order (ES2015+)
+  }
+
+  /**
+   * Compare migration keys for determining if one is greater than another.
+   * Handles both numeric and string comparisons appropriately.
+   */
+  private compareMigrationKeys(a: string, b: string): number {
+    const aIsNumeric = /^\d+$/.test(a)
+    const bIsNumeric = /^\d+$/.test(b)
+
+    if (aIsNumeric && bIsNumeric) {
+      return Number(a) - Number(b)
+    }
+
+    const aHasPrefix = /^\d+/.test(a)
+    const bHasPrefix = /^\d+/.test(b)
+
+    if (aHasPrefix && bHasPrefix) {
+      const aPrefix = parseInt(a.match(/^(\d+)/)?.[1] ?? "0", 10)
+      const bPrefix = parseInt(b.match(/^(\d+)/)?.[1] ?? "0", 10)
+      return aPrefix - bPrefix
+    }
+
+    return a.localeCompare(b)
+  }
+
+  private async migrate(): Promise<false | string> {
     if (!this.options.migrations) return false
 
-    const migrations = new Map<number, (table: Knex.CreateTableBuilder) => void>(
-      Object.entries(this.options.migrations)
-        .sort((a, b) => Number(a[0]) - Number(b[0]))
-        .map((entry) => [Number(entry[0]), entry[1]]),
-    )
+    const sortedKeys = this.getMigrationKeys()
+    if (sortedKeys.length === 0) return false
+
+    const migrations = this.options.migrations as Record<string, MigrationValue>
 
     const fromDatabase = await this.client<MigrationData>("migration")
       .where("table", this.options.name)
       .first()
 
-    const data = fromDatabase || {
+    const data: MigrationData = fromDatabase || {
       table: this.options.name,
-      version: -Infinity,
+      version: "",
     }
 
     const baseVersion = data.version
 
-    for (const [version, migration] of migrations) {
+    for (const key of sortedKeys) {
+      // Skip migrations that have already been applied
+      if (data.version !== "" && this.compareMigrationKeys(key, data.version) <= 0) {
+        continue
+      }
+
+      const migration = migrations[key]
+
       await this.client.schema.alterTable(this.options.name, (builder) => {
-        if (version <= data.version) return
-        migration(builder)
-        data.version = version
+        if (typeof migration === "function") {
+          // Callback function migration
+          migration(builder as Knex.CreateTableBuilder)
+        } else if (migration && typeof migration === "object" && "apply" in migration) {
+          // TypedMigration object
+          migration.apply(builder)
+        }
       })
+
+      data.version = key
     }
 
     await this.client<MigrationData>("migration").insert(data).onConflict("table").merge()

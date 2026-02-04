@@ -6,6 +6,17 @@ import { backupTable, disableForeignKeys, enableForeignKeys, restoreBackup } fro
 import { Table } from "./table.js"
 import { isCJS, type TextStyle } from "./util.js"
 
+/**
+ * Verify that the environment supports ES2015+ object key ordering.
+ * In ES2015+, integer keys are sorted numerically first, then string keys
+ * maintain their insertion order.
+ */
+function checkES2015KeyOrder(): boolean {
+  const test = { "2": "a", "1": "b", c: "d" }
+  const keys = Object.keys(test)
+  return keys[0] === "1" && keys[1] === "2" && keys[2] === "c"
+}
+
 export interface ILogger {
   log: (message: string) => void
   error: (error: string | Error) => void
@@ -53,6 +64,22 @@ export interface ORMConfig {
    * Default is `Infinity`.
    */
   caching?: number
+
+  /**
+   * Configuration for migration behavior.
+   */
+  migrations?: {
+    /**
+     * Force alphabetical sorting for string migration keys instead of insertion order.
+     *
+     * **NOT RECOMMENDED**: If your keys start with numbers (e.g., "001_init", "002_add_users"),
+     * they are automatically sorted by those numbers, not alphabetically.
+     * Prefer insertion order or purely numeric keys instead.
+     *
+     * @default false
+     */
+    alphabeticalOrder?: boolean
+  }
 }
 
 /**
@@ -92,6 +119,10 @@ export class ORM {
    * if called on an unconnected ORM instance.
    */
   constructor(public config: ORMConfig | false) {
+    if (!checkES2015KeyOrder()) {
+      throw new Error("@ghom/orm requires ES2015+ environment for guaranteed object key ordering")
+    }
+
     if (config === false) return
 
     this._client = knex(
@@ -179,10 +210,13 @@ export class ORM {
         priority: Infinity,
         columns: (col) => ({
           table: col.string().unique(),
-          version: col.integer(),
+          version: col.string(),
         }),
       }),
     )
+
+    // Auto-migrate version column from integer to string for existing projects
+    await this.upgradeMigrationTableIfNeeded()
 
     const sortedTables = this.cachedTables.toSorted(
       (a, b) => (b.options.priority ?? 0) - (a.options.priority ?? 0),
@@ -247,5 +281,49 @@ export class ORM {
     })
 
     console.log("Database restored from backup.")
+  }
+
+  /**
+   * Upgrade the migration table from integer version to string version.
+   * This is needed for projects that were using the old migration system.
+   */
+  private async upgradeMigrationTableIfNeeded(): Promise<void> {
+    this.requireClient()
+
+    const hasMigrationTable = await this._client.schema.hasTable("migration")
+    if (!hasMigrationTable) return
+
+    const columnInfo = await this._client("migration").columnInfo("version")
+    const columnType = (columnInfo as any)?.type ?? ""
+
+    // Check if version column is integer type (varies by database)
+    const isIntegerType =
+      columnType.includes("int") ||
+      columnType.includes("INT") ||
+      columnType === "integer" ||
+      columnType === "INTEGER"
+
+    if (!isIntegerType) return
+
+    // Migrate: convert integer versions to strings
+    // SQLite doesn't support column alterations well, so we use a temp column approach
+    await this._client.schema.alterTable("migration", (t) => {
+      t.string("version_new")
+    })
+
+    await this._client("migration").update({
+      version_new: this._client.raw("CAST(version AS TEXT)"),
+    })
+
+    await this._client.schema.alterTable("migration", (t) => {
+      t.dropColumn("version")
+    })
+
+    await this._client.schema.alterTable("migration", (t) => {
+      t.renameColumn("version_new", "version")
+    })
+
+    this.config !== false &&
+      this.config.logger?.log("Upgraded migration table: version column converted to string")
   }
 }
