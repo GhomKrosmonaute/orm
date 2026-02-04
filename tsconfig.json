@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "strict": true,
-    "rootDir": "src",
     "outDir": "dist",
     "module": "NodeNext",
     "target": "ESNext",
@@ -12,5 +11,6 @@
     "skipLibCheck": true,
     "typeRoots": ["./node_modules/@types", "./dist/typings"]
   },
-  "include": ["src/**/*", "dist/typings/**/*"]
+  "include": ["src/**/*", "dist/typings/**/*"],
+  "exclude": ["tests/**/*"]
 }

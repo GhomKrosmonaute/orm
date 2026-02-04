@@ -141,6 +141,94 @@ describe("typed migrations", () => {
       age: null,
     }
   })
+
+  test("Table accepts migrate.sequence for multiple typed migrations", () => {
+    const userTable = new Table({
+      name: "test_sequence_migrations",
+      columns: (col) => ({
+        id: col.increments(),
+        name: col.string(),
+      }),
+      migrations: {
+        "001_multiple_changes": migrate.sequence(
+          migrate.addColumn("phone", col.string()),
+          migrate.addColumn("address", col.string().nullable()),
+          migrate.addIndex(["phone"], "idx_phone"),
+          migrate.renameColumn("name", "username"),
+          migrate.renameColumn("username", "fullname"),
+        ),
+      },
+    })
+
+    expect(userTable).toBeInstanceOf(Table)
+    expect(userTable.options.migrations).toBeDefined()
+    expect(Object.keys(userTable.options.migrations!).length).toBe(1)
+
+    // Type inference check - sequence migrations should infer types correctly
+    type ExpectedType = typeof userTable.$type
+    const _typeCheck: ExpectedType = {
+      id: 1,
+      // @ts-expect-error - name is removed by renameColumn
+      name: "test",
+      // @ts-expect-error - username is removed by renameColumn
+      username: "test",
+      fullname: "test",
+      phone: "123456789",
+      address: null,
+    }
+  })
+
+  test("Table accepts mixed single and sequence migrations", () => {
+    const userTable = new Table({
+      name: "test_mixed_migrations",
+      columns: (col) => ({
+        id: col.increments(),
+        name: col.string(),
+      }),
+      migrations: {
+        "001_add_email": migrate.addColumn("email", col.string()),
+        "002_multiple_changes": migrate.sequence(
+          migrate.addColumn("phone", col.string()),
+          migrate.addColumn("age", col.integer().nullable()),
+        ),
+        "003_add_active": migrate.addColumn("isActive", col.boolean().defaultTo(true)),
+      },
+    })
+
+    expect(userTable).toBeInstanceOf(Table)
+    expect(userTable.options.migrations).toBeDefined()
+    expect(Object.keys(userTable.options.migrations!).length).toBe(3)
+
+    // Type inference check - mixed migrations should infer all types
+    type ExpectedType = typeof userTable.$type
+    const _typeCheck: ExpectedType = {
+      id: 1,
+      name: "test",
+      email: "test@example.com",
+      phone: "123456789",
+      age: null,
+      isActive: true,
+    }
+  })
+
+  test("Table accepts migrate.sequence with raw migrations", () => {
+    const table = new Table({
+      name: "test_sequence_raw_migrations",
+      columns: (col) => ({
+        id: col.increments(),
+      }),
+      migrations: {
+        "001_multiple_raw": migrate.sequence(
+          migrate.raw((builder) => builder.string("field1")),
+          migrate.raw((builder) => builder.integer("field2")),
+        ),
+      },
+    })
+
+    expect(table).toBeInstanceOf(Table)
+    expect(table.options.migrations).toBeDefined()
+    expect(table.options.migrations!["001_multiple_raw"]).toBeDefined()
+  })
 })
 
 describe("migration key patterns", () => {
@@ -151,9 +239,9 @@ describe("migration key patterns", () => {
         id: col.increments(),
       }),
       migrations: {
-        "1": (_builder) => {},
-        "2": (_builder) => {},
-        "10": (_builder) => {},
+        1: migrate.raw(() => {}),
+        2: migrate.raw(() => {}),
+        10: migrate.raw(() => {}),
       },
     })
 
@@ -168,9 +256,9 @@ describe("migration key patterns", () => {
         id: col.increments(),
       }),
       migrations: {
-        "001_init": (_builder) => {},
-        "002_add_column": (_builder) => {},
-        "010_fix": (_builder) => {},
+        "001_init": migrate.raw(() => {}),
+        "002_add_column": migrate.raw(() => {}),
+        "010_fix": migrate.raw(() => {}),
       },
     })
 
@@ -189,14 +277,35 @@ describe("migration key patterns", () => {
         id: col.increments(),
       }),
       migrations: {
-        init: (_builder) => {},
-        add_column: (_builder) => {},
-        fix: (_builder) => {},
+        init: migrate.raw(() => {}),
+        add_column: migrate.raw(() => {}),
+        fix: migrate.raw(() => {}),
       },
     })
 
     expect(table.options.migrations).toBeDefined()
     expect(Object.keys(table.options.migrations!)).toEqual(["init", "add_column", "fix"])
+  })
+
+  test("Table rejects mixed key patterns at migration time", () => {
+    const table = new Table({
+      name: "test_mixed_keys",
+      columns: (col) => ({
+        id: col.increments(),
+      }),
+      migrations: {
+        1: migrate.raw(() => {}),
+        "001_init": migrate.raw(() => {}),
+        init: migrate.raw(() => {}),
+      },
+    })
+
+    // The error is thrown when getMigrationKeys() is called during migration
+    // This happens during make(), not during construction
+    expect(() => {
+      // Access private method to test key validation
+      ;(table as any).getMigrationKeys()
+    }).toThrow(/Migration keys use mixed patterns/)
   })
 })
 

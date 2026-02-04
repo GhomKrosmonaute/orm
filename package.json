@@ -1,6 +1,6 @@
 {
   "name": "@ghom/orm",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -9,8 +9,8 @@
   "homepage": "https://github.com/GhomKrosmonaute/orm",
   "scripts": {
     "format": "biome format --write .",
-    "check": "biome check --write .",
-    "build": "rimraf dist && tsc",
+    "check": "biome check --write . && tsc --noEmit",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "bun test",
     "prepublishOnly": "npm run check && npm run build && npm test"
   },

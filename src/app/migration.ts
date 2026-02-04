@@ -25,16 +25,87 @@ export interface TypedMigration<From = {}, To = {}> {
 }
 
 /**
+ * Represents a sequence of typed migrations.
+ * Used internally by migrate.sequence() to preserve individual migration types.
+ *
+ * @template Migrations - Tuple of migrations in the sequence
+ */
+export interface TypedMigrationSequence<Migrations extends TypedMigration<any, any>[]> {
+  /** @internal The individual migrations in the sequence */
+  readonly __migrations__: Migrations
+  /** @internal Type marker for columns being removed (computed from sequence) */
+  readonly _from: SequenceFromType<Migrations>
+  /** @internal Type marker for columns being added (computed from sequence) */
+  readonly _to: SequenceToType<Migrations>
+  /**
+   * Apply all migrations in sequence to the table builder.
+   */
+  apply: (builder: Knex.AlterTableBuilder) => void
+}
+
+/**
+ * Unwrap a migration array to get the individual migration types.
+ * If M is an array, extracts the element type; otherwise returns M as-is.
+ */
+type UnwrapMigrationArray<M> = M extends readonly (infer U)[] ? U : M
+
+/**
+ * Extract "From" keys from a single TypedMigration or TypedMigrationSequence.
+ * For sequences, excludes intermediate columns (those that are also in _to).
+ */
+type ExtractFromKeysSingle<M> = M extends { __migrations__: infer Migrations }
+  ? Migrations extends TypedMigration<any, any>[]
+    ? Exclude<
+        keyof UnionToIntersection<Migrations[number]["_from"]>,
+        keyof UnionToIntersection<Migrations[number]["_to"]>
+      >
+    : never
+  : M extends TypedMigration<infer From, any>
+    ? keyof From
+    : never
+
+/**
  * Extract all "From" keys from a union of TypedMigration.
  * These are the columns that will be removed/renamed.
+ * Handles both single migrations and arrays of migrations.
+ * Uses distributive conditional types to handle unions correctly.
  */
-type ExtractFromKeys<M> = M extends TypedMigration<infer From, any> ? keyof From : never
+type ExtractFromKeys<M> = M extends any
+  ? UnwrapMigrationArray<M> extends infer U
+    ? U extends any
+      ? ExtractFromKeysSingle<U>
+      : never
+    : never
+  : never
+
+/**
+ * Extract "To" type from a single TypedMigration or TypedMigrationSequence.
+ * For sequences, excludes intermediate columns (those that are also in _from).
+ */
+type ExtractToTypesSingle<M> = M extends { __migrations__: infer Migrations }
+  ? Migrations extends TypedMigration<any, any>[]
+    ? Omit<
+        UnionToIntersection<Migrations[number]["_to"]>,
+        keyof UnionToIntersection<Migrations[number]["_from"]>
+      >
+    : never
+  : M extends TypedMigration<any, infer To>
+    ? To
+    : never
 
 /**
  * Extract all "To" types from a union of TypedMigration and intersect them.
  * These are the columns that will be added.
+ * Handles both single migrations and arrays of migrations.
+ * Uses distributive conditional types to handle unions correctly.
  */
-type ExtractToTypes<M> = M extends TypedMigration<any, infer To> ? To : never
+type ExtractToTypes<M> = M extends any
+  ? UnwrapMigrationArray<M> extends infer U
+    ? U extends any
+      ? ExtractToTypesSingle<U>
+      : never
+    : never
+  : never
 
 /**
  * Convert a union to an intersection.
@@ -45,23 +116,58 @@ type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
   : never
 
 /**
+ * Force TypeScript to evaluate a type (expands type aliases).
+ */
+type Simplify<T> = { [K in keyof T]: T[K] } & {}
+
+/**
+ * Combine all "from" types from a tuple of migrations.
+ */
+type CombineFromTypes<T extends TypedMigration<any, any>[]> = UnionToIntersection<
+  T[number]["_from"]
+>
+
+/**
+ * Combine all "to" types from a tuple of migrations.
+ */
+type CombineToTypes<T extends TypedMigration<any, any>[]> = UnionToIntersection<T[number]["_to"]>
+
+/**
+ * Compute the final "from" type for a sequence of migrations.
+ * Excludes columns that are also added (intermediate renames).
+ */
+type SequenceFromType<T extends TypedMigration<any, any>[]> = Simplify<
+  Omit<CombineFromTypes<T>, keyof CombineToTypes<T>>
+>
+
+/**
+ * Compute the final "to" type for a sequence of migrations.
+ * Excludes columns that are also removed (intermediate renames).
+ */
+type SequenceToType<T extends TypedMigration<any, any>[]> = Simplify<
+  Omit<CombineToTypes<T>, keyof CombineFromTypes<T>>
+>
+
+/**
  * Apply all migrations to compute the final type.
  * 1. Remove all columns specified in migration "From" types
  * 2. Add all columns specified in migration "To" types
+ * Handles both single migrations and arrays of migrations.
  */
 export type ApplyMigrations<
   Base,
-  Migrations extends Record<string, TypedMigration<any, any>>,
+  Migrations extends Record<string, any>,
 > = Migrations[keyof Migrations] extends infer M
   ? Omit<Base, ExtractFromKeys<M>> & UnionToIntersection<ExtractToTypes<M>>
   : Base
 
 /**
  * Compute the final table type from base columns and migrations.
+ * Supports both single migrations and arrays of migrations.
  */
 export type FinalTableType<
   Columns extends Record<string, ColumnDef<any, any>>,
-  Migrations extends Record<string, TypedMigration<any, any>> = {},
+  Migrations extends Record<string, any> = {},
 > = ApplyMigrations<InferColumns<Columns>, Migrations>
 
 /**
@@ -275,6 +381,38 @@ export const migrate = {
       _from: {} as From,
       _to: {} as To,
       apply: fn,
+    }
+  },
+
+  /**
+   * Combine multiple migrations into a single migration.
+   * All migrations are applied sequentially within the same alter table call.
+   * Type information from all migrations is preserved and combined.
+   *
+   * Intermediate columns (added then removed in the sequence) are excluded from the final type.
+   * For example: renameColumn("a", "b") + renameColumn("b", "c") results in only "c" being added.
+   *
+   * @param migrations - The migrations to combine
+   * @returns A typed migration sequence combining all type transformations
+   *
+   * @example
+   * migrate.sequence(
+   *   migrate.addColumn("phone", col.string()),
+   *   migrate.addColumn("address", col.string().nullable()),
+   *   migrate.addIndex(["phone"]),
+   * )
+   * // Combines: removes nothing, adds { phone: string; address: string | null }
+   */
+  sequence<T extends TypedMigration<any, any>[]>(...migrations: T): TypedMigrationSequence<T> {
+    return {
+      __migrations__: migrations,
+      _from: {} as SequenceFromType<T>,
+      _to: {} as SequenceToType<T>,
+      apply: (builder) => {
+        for (const migration of migrations) {
+          migration.apply(builder)
+        }
+      },
     }
   },
 }

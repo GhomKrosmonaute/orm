@@ -2,14 +2,15 @@ import type { Handler } from "@ghom/handler"
 import { CachedQuery } from "@ghom/query"
 import type { Knex } from "knex"
 import { buildColumnsSchema, type ColumnDef, col, type InferColumns } from "./column.js"
-import type { FinalTableType, TypedMigration } from "./migration.js"
+import type { FinalTableType, TypedMigration, TypedMigrationSequence } from "./migration.js"
 import type { ORM, ORMConfig } from "./orm.js"
 import { styled } from "./util.js"
 
 /**
- * A migration can be either a callback function or a TypedMigration object.
+ * A migration value is a TypedMigration or TypedMigrationSequence.
+ * Use migrate.sequence() to combine multiple migrations.
  */
-export type MigrationValue = ((builder: Knex.CreateTableBuilder) => void) | TypedMigration<any, any>
+export type MigrationValue = TypedMigration<any, any> | TypedMigrationSequence<any>
 
 type ConnectedORM = ORM & {
   config: ORMConfig
@@ -43,25 +44,32 @@ export interface TableOptions<
    */
   caching?: number
   /**
-   * Database migrations to apply.
+   * Database migrations to apply using typed migrations.
    *
    * Supports three key patterns:
    * - **Numeric keys** (`"1"`, `"2"`): Sorted numerically
    * - **Numeric-prefixed keys** (`"001_init"`, `"002_add"`): Sorted by prefix
    * - **Pure string keys** (`"init"`, `"add"`): Uses insertion order
    *
-   * Can use either callback functions or TypedMigration objects.
-   *
    * @example
-   * // Using callbacks
+   * // Single migration
    * migrations: {
-   *   "1": (builder) => builder.dropColumn("oldField"),
+   *   "001_add_email": migrate.addColumn("email", col.string()),
    * }
    *
    * @example
-   * // Using typed migrations
+   * // Multiple migrations in sequence
    * migrations: {
-   *   "001_add_email": migrate.addColumn("email", col.string()),
+   *   "002_add_fields": migrate.sequence(
+   *     migrate.addColumn("phone", col.string()),
+   *     migrate.addColumn("address", col.string().nullable()),
+   *   ),
+   * }
+   *
+   * @example
+   * // Raw migration for advanced use cases
+   * migrations: {
+   *   "003_custom": migrate.raw((builder) => builder.dropColumn("oldField")),
    * }
    */
   migrations?: Migrations
@@ -127,10 +135,9 @@ export class Table<
   /**
    * The inferred TypeScript type for rows of this table.
    * Includes base columns and all migration type transforms.
+   * Supports both single migrations and arrays of migrations.
    */
-  declare readonly $type: Migrations extends Record<string, TypedMigration<any, any>>
-    ? FinalTableType<Columns, Migrations>
-    : InferColumns<Columns>
+  declare readonly $type: FinalTableType<Columns, Migrations>
 
   private requireOrm(): asserts this is Table<Columns> & { orm: ConnectedORM } {
     if (!this.orm) throw new Error("missing ORM")
@@ -295,9 +302,29 @@ export class Table<
 
     // Validate: no mixing allowed
     if (!allPureNumeric && !allNumericPrefix && !allPureString) {
+      // Categorize keys for helpful error message
+      const numericKeys = keys.filter((k) => /^\d+$/.test(k))
+      const prefixedKeys = keys.filter((k) => /^\d+[_\-a-zA-Z]/.test(k))
+      const stringKeys = keys.filter((k) => !/^\d/.test(k))
+
+      const parts: string[] = []
+      if (numericKeys.length > 0) {
+        parts.push(`numeric keys: ${numericKeys.map((k) => `"${k}"`).join(", ")}`)
+      }
+      if (prefixedKeys.length > 0) {
+        parts.push(`prefixed keys: ${prefixedKeys.map((k) => `"${k}"`).join(", ")}`)
+      }
+      if (stringKeys.length > 0) {
+        parts.push(`string keys: ${stringKeys.map((k) => `"${k}"`).join(", ")}`)
+      }
+
       throw new Error(
-        `Table "${this.options.name}": Cannot mix migration key patterns. ` +
-          `Use one of: pure numbers (1, 2), prefixed strings ("001_x", "002_y"), or pure strings ("add_x").`,
+        `Table "${this.options.name}": Migration keys use mixed patterns which prevents reliable ordering.\n\n` +
+          `Found: ${parts.join(" AND ")}\n\n` +
+          `Choose ONE pattern for all keys:\n` +
+          `  - Pure numbers: "1", "2", "10" (sorted numerically)\n` +
+          `  - Prefixed strings: "001_init", "002_add" (sorted by prefix)\n` +
+          `  - Pure strings: "init", "add_email" (insertion order)`,
       )
     }
 
@@ -382,13 +409,7 @@ export class Table<
       const migration = migrations[key]
 
       await this.client.schema.alterTable(this.options.name, (builder) => {
-        if (typeof migration === "function") {
-          // Callback function migration
-          migration(builder as Knex.CreateTableBuilder)
-        } else if (migration && typeof migration === "object" && "apply" in migration) {
-          // TypedMigration object
-          migration.apply(builder)
-        }
+        migration.apply(builder)
       })
 
       data.version = key
