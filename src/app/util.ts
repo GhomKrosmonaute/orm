@@ -1,9 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-
-import type { LoggerStyles, ORM } from "./orm.js"
 import type { Knex } from "knex"
+import type { LoggerStyles, ORM } from "./orm.js"
 
 export type TextStyle = Parameters<typeof util.styleText>[0]
 

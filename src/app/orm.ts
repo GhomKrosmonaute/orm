@@ -225,7 +225,7 @@ export class ORM {
               0,
               databaseConfig.host,
               databaseConfig.port,
-              (err: Error | undefined, stream: NodeJS.ReadableStream) => {
+              (err: Error | undefined, stream: unknown) => {
                 if (err) {
                   tunnel.end()
                   reject(err)
@@ -237,7 +237,7 @@ export class ORM {
                   connection: {
                     ...databaseConfig,
                     stream,
-                  },
+                  } as Knex.StaticConnectionConfig,
                 })
 
                 resolve(client)

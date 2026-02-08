@@ -3,7 +3,7 @@ import fs from "fs"
 import path from "path"
 import { rimraf } from "rimraf"
 
-import { col, migrate, ORM, type ORMConfig, Table } from "../src"
+import { col, extractDatabaseConfig, migrate, ORM, type ORMConfig, Table } from "../src"
 
 import a from "./tables/a"
 import b from "./tables/b"
@@ -330,6 +330,185 @@ describe("unconnected ORM", () => {
     expect(() => unconnectedOrm.raw("SELECT 1")).toThrow()
     expect(unconnectedOrm.createBackup()).rejects.toThrow()
     expect(unconnectedOrm.restoreBackup()).rejects.toThrow()
+  })
+})
+
+describe("extractDatabaseConfig", () => {
+  test("extracts config from connection string URL", async () => {
+    const result = await extractDatabaseConfig("postgres://myuser:mypass@db.example.com:5432/mydb")
+
+    expect(result.host).toBe("db.example.com")
+    expect(result.port).toBe(5432)
+    expect(result.user).toBe("myuser")
+    expect(result.password).toBe("mypass")
+    expect(result.database).toBe("mydb")
+  })
+
+  test("extracts config from object with fields", async () => {
+    const result = await extractDatabaseConfig({
+      host: "10.0.0.1",
+      port: 3306,
+      user: "root",
+      password: "secret",
+      database: "app",
+    })
+
+    expect(result.host).toBe("10.0.0.1")
+    expect(result.port).toBe(3306)
+    expect(result.user).toBe("root")
+    expect(result.password).toBe("secret")
+    expect(result.database).toBe("app")
+  })
+
+  test("supports async password function", async () => {
+    const result = await extractDatabaseConfig({
+      host: "localhost",
+      port: 5432,
+      user: "admin",
+      password: async () => "async-secret",
+    })
+
+    expect(result.password).toBe("async-secret")
+  })
+
+  test("throws on missing config", async () => {
+    expect(extractDatabaseConfig(undefined)).rejects.toThrow("Missing database configuration")
+  })
+
+  test("throws on invalid config shape", async () => {
+    expect(extractDatabaseConfig({ filename: ":memory:" })).rejects.toThrow(
+      "Invalid database configuration",
+    )
+  })
+
+  test("throws on missing required fields", async () => {
+    expect(
+      extractDatabaseConfig({
+        host: "localhost",
+        port: 5432,
+        user: "admin",
+        password: "",
+      }),
+    ).rejects.toThrow("Missing password")
+  })
+})
+
+describe("SSH tunneling", () => {
+  const sshEnvPath = path.join(process.cwd(), "tests", ".ssh.env")
+
+  let sshConfig: { host: string; port: number; username: string; password: string } | undefined
+
+  beforeAll(() => {
+    if (!fs.existsSync(sshEnvPath)) return
+
+    const env = Object.fromEntries(
+      fs
+        .readFileSync(sshEnvPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => line.split("=")),
+    )
+
+    sshConfig = {
+      host: env.SSH_HOST,
+      port: Number(env.SSH_PORT),
+      username: env.SSH_USERNAME,
+      password: env.SSH_PASSWORD,
+    }
+  })
+
+  test("ORM with SSH config defers client initialization", () => {
+    const sshOrm = new ORM({
+      tableLocation: path.join(process.cwd(), "tests", "tables"),
+      database: {
+        client: "pg",
+        connection: "postgres://user:pass@db-host:5432/mydb",
+      },
+      ssh: {
+        host: "ssh-host",
+        port: 22,
+        username: "user",
+        password: "pass",
+      },
+    })
+
+    expect(sshOrm).toBeInstanceOf(ORM)
+    expect(sshOrm._client).toBeUndefined()
+    expect(sshOrm.isConnected).toBe(false)
+    expect(sshOrm.handler).toBeDefined()
+  })
+
+  test("ORM without SSH config initializes client immediately", () => {
+    const noSshOrm = new ORM({
+      tableLocation: path.join(process.cwd(), "tests", "tables"),
+    })
+
+    expect(noSshOrm._client).toBeDefined()
+    expect(noSshOrm.isConnected).toBe(true)
+  })
+
+  test("ORM.init() with SSH rejects when SSH server is unreachable", async () => {
+    const sshOrm = new ORM({
+      tableLocation: path.join(process.cwd(), "tests", "tables"),
+      database: {
+        client: "pg",
+        connection: "postgres://user:pass@db-host:5432/mydb",
+      },
+      ssh: {
+        host: "127.0.0.1",
+        port: 1, // port 1 should get ECONNREFUSED immediately
+        username: "user",
+        password: "pass",
+      },
+    })
+
+    expect(sshOrm.init()).rejects.toThrow()
+  })
+
+  test("tunnel property is undefined before init()", () => {
+    const sshOrm = new ORM({
+      tableLocation: path.join(process.cwd(), "tests", "tables"),
+      database: {
+        client: "pg",
+        connection: "postgres://user:pass@db-host:5432/mydb",
+      },
+      ssh: {
+        host: "ssh-host",
+        port: 22,
+        username: "user",
+        password: "pass",
+      },
+    })
+
+    expect(sshOrm.tunnel).toBeUndefined()
+  })
+
+  test("SSH config is correctly stored in ORM config", () => {
+    const ssh = {
+      host: "bastion.example.com",
+      port: 2222,
+      username: "deploy",
+      password: "s3cur3",
+    }
+
+    const sshOrm = new ORM({
+      tableLocation: path.join(process.cwd(), "tests", "tables"),
+      ssh,
+    })
+
+    expect((sshOrm.config as ORMConfig).ssh).toEqual(ssh)
+  })
+
+  test("extractDatabaseConfig parses connection for SSH forwarding", async () => {
+    if (!sshConfig) return
+
+    const dbConfig = await extractDatabaseConfig("postgres://user:pass@remote-db:5432/appdb")
+
+    expect(dbConfig.host).toBe("remote-db")
+    expect(dbConfig.port).toBe(5432)
+    expect(dbConfig.user).toBe("user")
+    expect(dbConfig.password).toBe("pass")
+    expect(dbConfig.database).toBe("appdb")
   })
 })
 
